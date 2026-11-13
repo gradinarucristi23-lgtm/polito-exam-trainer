@@ -167,7 +167,8 @@ function gateView() {
     $('#gUp').onclick = () => openAuth('signup'); $('#gIn').onclick = () => openAuth('signin');
   } else if (C.status === 'pending') {
     main.innerHTML = box(`<h2>Your account is waiting for approval</h2>
-      <p>You signed up as <b>${esc(C.user.email)}</b>. The site’s owner approves new accounts by hand. You don’t need to do anything else: come back later, or press <b>Check again</b>.</p>
+      <p>You signed up as <b>${esc(C.user.email)}</b>. The site’s owner approves new accounts by hand. You don’t need to do anything else.</p>
+      <p><b>Already approved but still seeing this page?</b> Press <b>Check again</b>, or reload the page (F5 on a computer, pull down or ↻ on a phone).</p>
       <div class="row"><button class="btn primary" id="gCheck">Check again</button><button class="btn" id="gOut">Sign out</button></div>
       <p class="small muted" style="margin:14px 0 0">Account ID: <code id="gUid">${esc(C.user.uid)}</code> <button class="linkbtn small" id="gCopy">Copy</button></p>`);
     $('#gCheck').onclick = async () => { const b = $('#gCheck'); b.disabled = true; b.textContent = 'Checking…'; await C.refreshStatus(); if (C.status === 'pending') { toast('Not approved yet.'); render(); } };
