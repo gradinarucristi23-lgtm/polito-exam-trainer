@@ -134,6 +134,9 @@ code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
 .kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 13px; }
 .acct { display: flex; align-items: center; gap: 8px; }
 .acct-mail { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.gbtn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
+.orline { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0 4px; }
+.orline::before, .orline::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .inp { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 9px 11px; }
 .inp:focus, .btn:focus-visible, .linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>

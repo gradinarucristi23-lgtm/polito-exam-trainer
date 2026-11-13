@@ -18,6 +18,16 @@ const Cloud = {
     return cred.user;
   },
   signIn(email, password) { return this.auth.signInWithEmailAndPassword(email, password); },
+  async signInGoogle() {
+    const provider = new G.firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters && provider.setCustomParameters({ prompt: 'select_account' });
+    try { return await this.auth.signInWithPopup(provider); }
+    catch (e) {
+      // Some phones and in-app browsers block popups: fall back to a full-page redirect.
+      if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) return this.auth.signInWithRedirect(provider);
+      throw e;
+    }
+  },
   signOut() { return this.auth.signOut(); },
   resetPassword(email) { return this.auth.sendPasswordResetEmail(email); },
   _col() { return this.db.collection('users').doc(this.user.uid).collection('history'); },
@@ -44,7 +54,10 @@ const Cloud = {
       'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
       'auth/network-request-failed': 'No internet connection. Check your network and try again.',
       'auth/unauthorized-domain': 'This website address is not authorized in Firebase (Authentication → Settings → Authorized domains).',
-      'auth/operation-not-allowed': 'Email/password sign-in is not enabled in Firebase (Authentication → Sign-in method).',
+      'auth/operation-not-allowed': 'This sign-in method is not enabled in Firebase (Authentication → Sign-in method).',
+      'auth/popup-closed-by-user': 'The Google window was closed before signing in.',
+      'auth/cancelled-popup-request': 'The Google window was closed before signing in.',
+      'auth/account-exists-with-different-credential': 'An account with this email already exists. Sign in with email and password.',
       'permission-denied': 'The server refused the request (check the Firestore security rules).',
       'unavailable': 'The server cannot be reached right now. Try again in a moment.',
     };

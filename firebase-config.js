@@ -1,3 +1,11 @@
-/* Firebase web configuration (it is public by design: security comes from the Firestore rules).
-   Leave it null to use the program without accounts. */
-window.FIREBASE_CONFIG = null;
+/* Firebase web config for the public website build (tools/build_web.py copies it as firebase-config.js).
+   This is public project identification, not a secret: access is controlled by the Firestore rules
+   and the authorized domains in the Firebase console. */
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBlHcFrh-QE_GdmNOcvTVaLEBNLiJp4Jp4",
+  authDomain: "polito-exam-trainer.firebaseapp.com",
+  projectId: "polito-exam-trainer",
+  storageBucket: "polito-exam-trainer.firebasestorage.app",
+  messagingSenderId: "25753234128",
+  appId: "1:25753234128:web:d3fa65b54350138ea68cd5"
+};
