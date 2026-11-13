@@ -28,7 +28,9 @@ if (window.CS) SUBJECTS.push({
   modes: window.CS.MODES,
   written: window.CS.WRITTEN,
 });
-const TABS = [['test', 'Computer test'], ['written', 'Written exam'], ['practice', 'Practice'], ['history', 'History'], ['materials', 'Materials'], ['formula', 'Formula sheet']];
+const TABS = [['test', 'Computer test'], ['written', 'Written exam'], ['practice', 'Practice'], ['history', 'History'], ['materials', 'Materials'], ['formula', 'Formulas'], ['tables', 'Tables']];
+const FORMULA_TAB = { cs: 'Cheat sheet' };   // tab name per subject (default 'Formulas')
+const hasTables = id => !!(window.TABLES && window.TABLES[id]);
 const DIFFS = ['random', '1', '2', '3', '4', '5', '6'];
 const diffLabel = d => (d === 'random' ? 'Random' : 'Level ' + d);
 
@@ -124,8 +126,9 @@ function renderHeader() {
   renderAccount();
   const admin = !!(window.Cloud && Cloud.isAdmin);
   if (!admin && ST.tab === 'admin') ST.tab = 'test';
-  const tabs = TABS.filter(([id]) => hasMat || id !== 'materials').concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
-  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' && ST.subject === 'chem' ? 'Tables' : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
+  if (ST.tab === 'tables' && !hasTables(ST.subject)) ST.tab = 'formula';
+  const tabs = TABS.filter(([id]) => (hasMat || id !== 'materials') && (id !== 'tables' || hasTables(ST.subject))).concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
+  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' ? (FORMULA_TAB[ST.subject] || nm) : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
   $$('#tabs .tab').forEach(b => b.onclick = () => { ST.tab = b.dataset.t; ST.review = null; render(); });
   document.title = 'PoliTo Exam Trainer — ' + SUB().name;
 }
@@ -134,7 +137,7 @@ function render() {
   if (gateView()) return;
   renderHeader();
   const main = $('#main');
-  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, admin: viewAdmin })[ST.tab](main);
+  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, tables: viewTables, admin: viewAdmin })[ST.tab](main);
   window.scrollTo(0, 0);
 }
 
@@ -277,7 +280,7 @@ function examView(main, S) {
       <div class="small muted" style="margin-top:4px;text-align:center">${S.limit ? 'time left' : 'time elapsed'}</div>
       <div class="navgrid">${S.questions.map((qq, i) => `<button class="navb ${S.answers[i] != null ? 'done' : ''} ${i === S.cur ? 'cur' : ''} ${S.flags[i] ? 'flag' : ''} ${S.instant && S.answers[i] != null ? (S.answers[i] === qq.ans ? 'ok' : 'ko') : ''}" data-n="${i}">${i + 1}</button>`).join('')}</div>
       <div class="small muted">${S.answers.filter(x => x != null).length} of ${n} answered</div>
-      <button class="btn" style="width:100%;margin-top:10px" id="sheet">${SUB().id === 'chem' ? 'Tables (periodic table, E°, ΔH°f)' : 'Formula sheet'}</button>
+      <button class="btn" style="width:100%;margin-top:10px" id="sheet">${SUB().id === 'chem' ? 'Tables and constants' : (FORMULA_TAB[SUB().id] || 'Formulas')}</button>
       <button class="btn primary" style="width:100%;margin-top:10px" id="fin">Finish attempt…</button>
       <button class="btn danger" style="width:100%;margin-top:8px" id="abandon">Abandon</button>
     </aside></div>`;
@@ -290,7 +293,8 @@ function examView(main, S) {
   const nx = $('#next'); if (nx) nx.onclick = () => go(S.cur + 1);
   const finish = () => { const blank = S.answers.filter(x => x == null).length; if (blank && !confirm(`${blank} question(s) not answered. Finish anyway?`)) return; finishMC(S); };
   $('#fin').onclick = finish; const f2 = $('#fin2'); if (f2) f2.onclick = finish;
-  $('#sheet').onclick = () => { const h = (window.FORMULAS || {})[S.subject]; openModal('<div class="formula">' + (h ? rich(typeof h === 'function' ? h() : h) : 'No formula sheet.') + '</div><div style="text-align:right;margin-top:10px"><button class="btn" onclick="this.closest(\'.modal\').remove()">Close</button></div>'); };
+  // During a test: what the exam provides (chemistry: tables + constants), otherwise the formula sheet.
+  $('#sheet').onclick = () => { const h = sheetHtml((window.EXAM_SHEETS || {})[S.subject] || (window.FORMULAS || {})[S.subject]); const m = openModal('<div class="formula">' + (h || 'No formula sheet.') + '</div><div style="text-align:right;margin-top:10px"><button class="btn" onclick="this.closest(\'.modal\').remove()">Close</button></div>'); bindJumps(m); };
   $('#abandon').onclick = () => { if (confirm('Abandon this attempt? It will not be saved.')) { delete ST.sess[key()]; render(); } };
   ST.tick = setInterval(() => {
     const el = $('#timer'); if (!el) return clearInterval(ST.tick);
@@ -544,10 +548,16 @@ function viewMaterials(main) {
   main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — materials</h2><p class="small muted">Files stored in the program folder. They open in a new browser tab.</p>
     ${Object.keys(groups).length ? Object.entries(groups).map(([g, xs]) => `<h3 style="margin-top:14px">${esc(g)}</h3><ul>${xs.map(x => `<li><a href="${encodeURI(x.file)}" target="_blank">${esc(x.title)}</a></li>`).join('')}</ul>`).join('') : '<p class="muted">No materials for this subject yet.</p>'}</div>`;
 }
+const sheetHtml = h => (h ? rich(typeof h === 'function' ? h() : h) : '');
+// The buttons at the top of a formula sheet scroll to its sections.
+function bindJumps(root) { $$('[data-jump]', root).forEach(b => b.onclick = () => { const t = root.querySelector('#' + b.dataset.jump); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); }
 function viewFormula(main) {
-  const sub = SUB(); const html = (window.FORMULAS || {})[sub.id];
-  main.innerHTML = `<div class="card formula">${html ? rich(typeof html === 'function' ? html() : html) : '<p class="muted">No formula sheet for this subject.</p>'}</div>`;
-  const tb = $$('.tab')[5]; if (tb) tb.textContent = sub.id === 'chem' ? 'Tables' : 'Formula sheet';
+  const h = sheetHtml((window.FORMULAS || {})[SUB().id]);
+  main.innerHTML = `<div class="card formula">${h || '<p class="muted">No formula sheet for this subject.</p>'}</div>`;
+  bindJumps(main);
+}
+function viewTables(main) {
+  main.innerHTML = `<div class="card formula">${sheetHtml((window.TABLES || {})[SUB().id]) || '<p class="muted">No tables for this subject.</p>'}</div>`;
 }
 
 /* ======================= EXPORT / IMPORT HISTORY ======================= */

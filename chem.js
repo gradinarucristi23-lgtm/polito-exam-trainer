@@ -700,22 +700,14 @@ const MODES = [
 
 /* ---------------- tables for the formula sheet ---------------- */
 const EO_TABLE = [['Li^+ + e^- -> Li(s)', -3.040], ['K^+ + e^- -> K(s)', -2.931], ['Ba^2+ + 2e^- -> Ba(s)', -2.912], ['Ca^2+ + 2e^- -> Ca(s)', -2.868], ['Na^+ + e^- -> Na(s)', -2.71], ['Mg^2+ + 2e^- -> Mg(s)', -2.372], ['Al^3+ + 3e^- -> Al(s)', -1.662], ['Mn^2+ + 2e^- -> Mn(s)', -1.185], ['Zn^2+ + 2e^- -> Zn(s)', -0.763], ['Cr^3+ + 3e^- -> Cr(s)', -0.74], ['Fe^2+ + 2e^- -> Fe(s)', -0.447], ['Cd^2+ + 2e^- -> Cd(s)', -0.403], ['Co^2+ + 2e^- -> Co(s)', -0.28], ['Ni^2+ + 2e^- -> Ni(s)', -0.257], ['Sn^2+ + 2e^- -> Sn(s)', -0.137], ['Pb^2+ + 2e^- -> Pb(s)', -0.126], ['2H^+ + 2e^- -> H2(g)', 0.000], ['Sn^4+ + 2e^- -> Sn^2+', 0.15], ['Cu^2+ + 2e^- -> Cu(s)', 0.337], ['O2(g) + 2H2O + 4e^- -> 4OH^-', 0.41], ['Fe^3+ + e^- -> Fe^2+', 0.771], ['Ag^+ + e^- -> Ag(s)', 0.800], ['Hg^2+ + 2e^- -> Hg(l)', 0.851], ['NO3^- + 4H^+ + 3e^- -> NO(g) + 2H2O', 0.96], ['Br2(l) + 2e^- -> 2Br^-', 1.09], ['Cr2O7^2- + 14H^+ + 6e^- -> 2Cr^3+ + 7H2O', 1.33], ['Cl2(g) + 2e^- -> 2Cl^-', 1.36], ['Au^3+ + 3e^- -> Au(s)', 1.498], ['MnO4^- + 8H^+ + 5e^- -> Mn^2+ + 4H2O', 1.51], ['H2O2 + 2H^+ + 2e^- -> 2H2O', 1.77], ['F2(g) + 2e^- -> 2F^-', 2.87]];
-function formulaHtml() {
+function tablesHtml() {
   const cells = ELS.filter(e => e.per <= 7).map(e => `<div class="el" style="grid-row:${e.per};grid-column:${e.grp}"><span>${e.Z}</span><b>${e.sym}</b><span>${e.M}</span></div>`).join('');
-  return `<h2>Chemistry tables</h2><p class="small muted">The same kind of tables you receive at the exam (periodic table, standard reduction potentials, standard enthalpies of formation). Lanthanides and actinides omitted.</p>
+  return `<h2>Chemistry tables</h2><p class="small muted">The same kind of tables you receive at the exam (periodic table, standard reduction potentials, standard enthalpies of formation). Lanthanides and actinides omitted. Constants and formulas are in the <b>Formulas</b> tab.</p>
   <h3>Periodic table (Z, symbol, atomic mass)</h3><div class="tablewrap"><div class="ptable">${cells}</div></div>
   <h3>Standard reduction potentials \\(E^\\circ\\) (V, 25 °C)</h3><div class="tablewrap"><table><tr><th>Half reaction</th><th>\\(E^\\circ\\)</th></tr>${EO_TABLE.map(([h, e]) => `<tr><td>\\(\\ce{${h}}\\)</td><td>${e.toFixed(3)}</td></tr>`).join('')}</table></div>
-  <h3>Standard enthalpies of formation \\(\\Delta H^\\circ_f\\) (kJ/mol)</h3><div class="tablewrap"><table><tr><th>Species</th><th>\\(\\Delta H^\\circ_f\\)</th><th>Species</th><th>\\(\\Delta H^\\circ_f\\)</th></tr>${(() => { const e = Object.entries(HF); const h = Math.ceil(e.length / 2); let s = ''; for (let i = 0; i < h; i++) { const a = e[i], b = e[i + h]; s += `<tr><td>\\(\\ce{${a[0]}}\\)</td><td>${a[1]}</td><td>${b ? `\\(\\ce{${b[0]}}\\)` : ''}</td><td>${b ? b[1] : ''}</td></tr>`; } return s; })()}</table></div>
-  <h3>Constants & formulas</h3><ul>
-  <li>\\(R=0.0821\\ \\mathrm{L\\,atm\\,mol^{-1}K^{-1}}=8.314\\ \\mathrm{J\\,mol^{-1}K^{-1}}\\), \\(N_A=6.022\\times10^{23}\\ \\mathrm{mol^{-1}}\\), \\(F=96485\\ \\mathrm{C/mol}\\)</li>
-  <li>\\(h=6.626\\times10^{-34}\\ \\mathrm{J\\,s}\\), \\(c=2.998\\times10^{8}\\ \\mathrm{m/s}\\), \\(E_n=-2.18\\times10^{-18}/n^2\\ \\mathrm{J}\\) (H atom)</li>
-  <li>\\(PV=nRT\\), \\(d=\\frac{PM}{RT}\\), \\(u_{rms}=\\sqrt{3RT/M}\\), \\(\\frac{v_1}{v_2}=\\sqrt{M_2/M_1}\\)</li>
-  <li>\\(\\Delta T_f=iK_fb\\) (\\(K_f=1.86\\)), \\(\\Delta T_{eb}=iK_{eb}b\\) (\\(K_{eb}=0.512\\)), \\(\\pi=icRT\\), \\(P=x_{solv}P^\\circ\\)</li>
-  <li>\\(q=mc\\Delta T\\), \\(\\Delta H^\\circ=\\sum\\nu\\Delta H^\\circ_f(\\text{prod})-\\sum\\nu\\Delta H^\\circ_f(\\text{reag})\\), \\(\\Delta G=\\Delta H-T\\Delta S\\)</li>
-  <li>\\(K_p=K_c(RT)^{\\Delta n}\\), \\(\\mathrm{pH}=-\\log[\\ce{H3O+}]\\), \\(\\mathrm{pH}+\\mathrm{pOH}=14\\), \\(\\mathrm{pH}=\\mathrm{p}K_a+\\log\\frac{[A^-]}{[HA]}\\)</li>
-  <li>\\(E^\\circ_{cell}=E^\\circ_{cat}-E^\\circ_{an}\\), \\(\\Delta G^\\circ=-nFE^\\circ\\), \\(E=E^\\circ-\\frac{0.0592}{n}\\log Q\\), \\(m=\\frac{ItM}{nF}\\)</li>
-  <li>\\(t_{1/2}=\\ln2/k\\) (1st order), \\(\\ln\\frac{k_2}{k_1}=-\\frac{E_a}{R}(\\frac1{T_2}-\\frac1{T_1})\\), \\(\\ln\\frac{P_2}{P_1}=-\\frac{\\Delta H_{vap}}{R}(\\frac1{T_2}-\\frac1{T_1})\\)</li></ul>`;
+  <h3>Standard enthalpies of formation \\(\\Delta H^\\circ_f\\) (kJ/mol)</h3><div class="tablewrap"><table><tr><th>Species</th><th>\\(\\Delta H^\\circ_f\\)</th><th>Species</th><th>\\(\\Delta H^\\circ_f\\)</th></tr>${(() => { const e = Object.entries(HF); const h = Math.ceil(e.length / 2); let s = ''; for (let i = 0; i < h; i++) { const a = e[i], b = e[i + h]; s += `<tr><td>\\(\\ce{${a[0]}}\\)</td><td>${a[1]}</td><td>${b ? `\\(\\ce{${b[0]}}\\)` : ''}</td><td>${b ? b[1] : ''}</td></tr>`; } return s; })()}</table></div>`;
+
 }
-G.FORMULAS = G.FORMULAS || {}; G.FORMULAS.chem = formulaHtml;
+G.TABLES = G.TABLES || {}; G.TABLES.chem = tablesHtml;
 G.Chem = { TOPICS, TOPIC_NAME, generate, MODES, data: { EL, BYZ, MM, parseFormula, balance, eqTex, config, unpaired, cfgTex, sig, HF, COUPLES, WEAK, SOLUTES, COMPOUNDS, CATIONS, ANIONS, salt, saltName, dHr, RXN_H, T, R_ATM, R_SI, NA, FARADAY, MOLS, moInfo, DIAT, ionTex } };
 })(typeof window !== 'undefined' ? window : globalThis);

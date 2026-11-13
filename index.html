@@ -16,10 +16,10 @@
 <script src="katex/katex.min.js?v=80102fec"></script>
 <script src="katex/contrib/mhchem.min.js?v=b6038d83"></script>
 <script src="engine.js?v=2396278f"></script>
-<script src="chem.js?v=2d1b17fd"></script>
+<script src="chem.js?v=5c7d306f"></script>
 <script src="cs.js?v=b46d78ef"></script>
 <script src="written.js?v=cb61541e"></script>
-<script src="formulas.js?v=6ba75902"></script>
+<script src="formulas.js?v=eb78cbf4"></script>
 <script src="materials.js?v=29223f06"></script>
 <script src="firebase-config.js?v=600524e1"></script>
 <script src="cloud.js?v=f9d0cad4"></script>
@@ -107,7 +107,7 @@ select, input[type=number] { border: 1px solid var(--line); background: var(--ca
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 15px; vertical-align: middle; }
 th { color: var(--muted); font-weight: 600; }
-.tablewrap { overflow-x: auto; }
+.tablewrap { overflow-x: auto; position: relative; }   /* relative: keeps KaTeX's hidden MathML inside the scroll box */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .stat { background: var(--bg); border-radius: 10px; padding: 10px 12px; } .stat b { display: block; font-size: 22px; }
 .bars .barrow { display: grid; grid-template-columns: minmax(120px, 260px) 1fr 52px; gap: 10px; align-items: center; margin: 4px 0; font-size: 14px; }
@@ -132,7 +132,12 @@ th { color: var(--muted); font-weight: 600; }
 .modal .box { background: var(--card); border-radius: 12px; max-width: 980px; width: 100%; max-height: 90vh; overflow: auto; padding: 18px 20px; }
 .modal img { max-width: 100%; max-height: 85vh; display: block; margin: 0 auto; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; z-index: 60; }
-.formula h3 { margin-top: 18px; } .formula table td, .formula table th { font-size: 14px; }
+.formula h3 { margin-top: 22px; scroll-margin-top: 120px; } .formula table td, .formula table th { font-size: 14px; }
+.fnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; } .fnav .pill { font-size: 13px; padding: 4px 10px; }
+.ftab td { vertical-align: middle; } .ftab td:first-child { white-space: normal; min-width: 180px; }
+.ftab tr:nth-child(even) td { background: var(--bg); }
+.formula .tablewrap + .tablewrap { margin-top: 16px; }
+@media (max-width: 600px) { .formula h3 { scroll-margin-top: 170px; } }
 .ptable { display: grid; grid-template-columns: repeat(18, minmax(34px, 1fr)); gap: 2px; min-width: 760px; }
 .el { border: 1px solid var(--line); border-radius: 4px; padding: 2px; text-align: center; font-size: 10px; line-height: 1.2; background: var(--card); }
 .el b { display: block; font-size: 13px; }
@@ -169,6 +174,6 @@ code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
   <nav class="tabs" id="tabs"></nav>
 </header>
 <main id="main"></main>
-<script src="app.js?v=1ccff7f6"></script>
+<script src="app.js?v=abc3cf89"></script>
 </body>
 </html>
