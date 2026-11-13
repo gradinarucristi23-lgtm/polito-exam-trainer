@@ -59,6 +59,18 @@ const history = {
     else this._local(store.get(HKEY, []).filter(x => x.id !== id));
     IDB.del(id).catch(() => {});
   },
+  // Adds many entries at once (used by "Import from a file"). Resolves to the number that could not be saved.
+  async addMany(list) {
+    const byDate = (a, b) => (a.date < b.date ? 1 : -1);
+    if (this.cloud) {
+      let fail = 0;
+      for (let i = 0; i < list.length; i += 20) {
+        await Promise.all(list.slice(i, i + 20).map(e => Cloud.put(e).then(() => { this.cloud.push(e); }).catch(() => { fail++; })));
+      }
+      this.cloud.sort(byDate); return fail;
+    }
+    return this._local(store.get(HKEY, []).concat(list).sort(byDate)) ? 0 : list.length;
+  },
 };
 const IDB = {
   _db: null,
@@ -419,7 +431,14 @@ function viewHistory(main) {
       ${list.map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.kind === 'written' ? 'Written exam' : x.kind === 'practice' ? 'Practice · ' + x.mode : x.mode)}</td><td>${diffLabel(x.diff)}</td>
         <td>${x.kind === 'practice' ? `${x.right}/${x.items.length}` : x.kind === 'written' && !x.graded ? '<span class="muted">not graded</span>' : `${fmtNum(x.score)} / ${fmtNum(x.max)}`}</td>
         <td>${x.passed == null ? '' : x.kind === 'written' && !x.graded ? '' : `<span class="badge ${x.passed ? 'ok' : 'ko'}">${x.passed ? 'passed' : 'not passed'}</span>`}</td>
-        <td style="white-space:nowrap"><button class="btn" data-open="${x.id}">Review</button> <button class="btn danger" data-del="${x.id}" title="Delete">×</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nothing here yet. Take a test and it will appear here automatically.</p>'}</div></div>`;
+        <td style="white-space:nowrap"><button class="btn" data-open="${x.id}">Review</button> <button class="btn danger" data-del="${x.id}" title="Delete">×</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nothing here yet. Take a test and it will appear here automatically.</p>'}</div></div>
+    <div class="card"><h3 style="margin-top:0">Move or back up your history</h3>
+      <p class="small muted">${!(window.Cloud && Cloud.enabled)
+        ? 'Export saves your history for <b>all subjects</b> to a file. To move it to the website, sign in there, open History and use <b>Import from a file</b>. Photos of written answers stay on this computer.'
+        : (Cloud.user ? 'Import adds a file exported from the Desktop app (or from another browser) to your account. Export saves your history for all subjects to a file. Photos of written answers are not included.'
+          : 'Import adds a file exported from the Desktop app to this browser. Sign in first if you want it saved in your account. Photos of written answers are not included.')}</p>
+      <div class="row"><button class="btn" id="hExport">Export history to a file</button><button class="btn" id="hImport">Import from a file</button></div></div>`;
+  $('#hExport').onclick = exportHistory; $('#hImport').onclick = importHistory;
   bindSeg(main, 'hfilt', v => { setPref('hfilt', v); render(); });
   const hs = $('#hintSignIn'); if (hs) hs.onclick = () => openAuth('signin');
   $$('[data-open]', main).forEach(b => b.onclick = () => { ST.review = history.all().find(x => x.id === b.dataset.open); render(); });
@@ -438,6 +457,81 @@ function viewFormula(main) {
   const sub = SUB(); const html = (window.FORMULAS || {})[sub.id];
   main.innerHTML = `<div class="card formula">${html ? rich(typeof html === 'function' ? html() : html) : '<p class="muted">No formula sheet for this subject.</p>'}</div>`;
   const tb = $$('.tab')[5]; if (tb) tb.textContent = sub.id === 'chem' ? 'Tables' : 'Formula sheet';
+}
+
+/* ======================= EXPORT / IMPORT HISTORY ======================= */
+// Moves history between the Desktop copy, other browsers and the online account through a .json file.
+const EXPORT_APP = 'polito-exam-trainer';
+function exportHistory() {
+  const entries = history.all();
+  if (!entries.length) { toast('There is no history to export yet.'); return; }
+  const data = JSON.stringify({ app: EXPORT_APP, version: 1, exported: new Date().toISOString(), entries });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  a.download = 'polito-exam-history-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast(`Exported ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} (all subjects).`);
+}
+// Imported files are untrusted: history entries are rendered as HTML, so anything that could run code is rejected.
+const BAD_TAGS = /^(script|iframe|frame|frameset|object|embed|applet|link|meta|base|form|style|template|noscript|noembed|noframes|xmp|plaintext|textarea|title|portal)$/i;
+function unsafeString(s) {
+  if (s.indexOf('<') < 0) return false;
+  const doc = new DOMParser().parseFromString(s, 'text/html');   // inert: nothing runs or loads
+  for (const el of doc.querySelectorAll('*')) {
+    if (BAD_TAGS.test(el.localName)) return true;
+    for (const at of el.attributes) {
+      const n = at.name.toLowerCase(), v = at.value.replace(/[\u0000- ]+/g, '').toLowerCase();
+      if (n.startsWith('on') || n === 'srcdoc' || n === 'formaction' || v.includes('javascript:') || v.includes('vbscript:')) return true;
+    }
+  }
+  return false;
+}
+function unsafeValue(x, depth = 0) {
+  if (depth > 12) return true;
+  if (typeof x === 'string') return unsafeString(x);
+  if (x && typeof x === 'object') return Object.entries(x).some(([k, v]) => unsafeString(k) || unsafeValue(v, depth + 1));
+  return false;
+}
+function cleanEntry(e) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+  if (typeof e.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(e.id)) return null;
+  if (!['test', 'practice', 'written'].includes(e.kind) || !SUBJECTS.some(s => s.id === e.subject)) return null;
+  if (typeof e.date !== 'string' || isNaN(Date.parse(e.date))) return null;
+  if (e.kind === 'written' ? !(e.exam && typeof e.exam === 'object') : !Array.isArray(e.items)) return null;
+  if (unsafeValue(e)) return null;
+  const c = { ...e, diff: DIFFS.includes(String(e.diff)) ? String(e.diff) : 'random' };
+  if (JSON.stringify(c).length > 850000) return null;
+  return c;
+}
+function importHistory() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    if (f.size > 60e6) { toast('That file is too large to be a history file.'); return; }
+    let data; try { data = JSON.parse(await f.text()); } catch (err) { toast('This is not a history file (it could not be read).'); return; }
+    const raw = Array.isArray(data) ? data : (data && data.app === EXPORT_APP && Array.isArray(data.entries) ? data.entries : null);
+    if (!raw) { toast('This is not a PoliTo Exam Trainer history file.'); return; }
+    const have = new Set(history.all().map(x => x.id)); const todo = []; let dup = 0, bad = 0;
+    raw.forEach(e => { const c = cleanEntry(e); if (!c) bad++; else if (have.has(c.id)) dup++; else { have.add(c.id); todo.push(c); } });
+    const notes = [dup ? `${dup} already here` : '', bad ? `${bad} skipped because they are damaged or not valid` : ''].filter(Boolean).join(', ');
+    if (!todo.length) { openModal(`<h2>Nothing new to import</h2><p>The file has ${raw.length} ${raw.length === 1 ? 'entry' : 'entries'}${notes ? ': ' + esc(notes) : ''}.</p><div class="row" style="margin-top:14px"><button class="btn primary" onclick="this.closest('.modal').remove()">OK</button></div>`); return; }
+    const per = {}; todo.forEach(e => { const n = (SUBJECTS.find(s => s.id === e.subject) || {}).name || e.subject; per[n] = (per[n] || 0) + 1; });
+    const where = history.cloud ? `your account (${esc(Cloud.user.email)})` : (window.Cloud && Cloud.enabled ? 'this browser only (you are not signed in)' : 'this computer');
+    const m = openModal(`<h2>Import ${todo.length} ${todo.length === 1 ? 'entry' : 'entries'}?</h2>
+      <p>${Object.entries(per).map(([n, c]) => `${esc(n)}: <b>${c}</b>`).join(' · ')}</p>
+      <p>They will be saved in <b>${where}</b>.${notes ? `<br><span class="small muted">Also in the file: ${esc(notes)}.</span>` : ''}</p>
+      ${window.Cloud && Cloud.enabled && !history.cloud ? '<p class="small muted">To keep them in your account, close this, sign in first, then import again.</p>' : ''}
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="impGo">Import</button><button class="btn" id="impCancel">Cancel</button></div>`);
+    $('#impCancel', m).onclick = () => m.remove();
+    $('#impGo', m).onclick = async () => {
+      const go = $('#impGo', m); go.disabled = true; go.textContent = 'Importing…';
+      const fail = await history.addMany(todo); m.remove();
+      toast(fail ? `${todo.length - fail} imported, ${fail} could not be saved. Try importing the same file again.` : `${todo.length} ${todo.length === 1 ? 'entry' : 'entries'} imported.`);
+      ST.review = null; render();
+    };
+  };
+  inp.click();
 }
 
 /* ======================= ACCOUNTS ======================= */
