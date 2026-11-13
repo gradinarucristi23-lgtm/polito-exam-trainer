@@ -204,8 +204,8 @@ function viewAdmin(main) {
   main.innerHTML = '<div class="card"><h2>Accounts</h2><p class="muted">Loading…</p></div>';
   Cloud.listUsers().then(list => {
     if (ST.tab !== 'admin') return;
-    const groups = [['pending', 'Waiting for approval'], ['approved', 'Approved'], ['blocked', 'Blocked']];
-    const st = u => (u.uid === Cloud.user.uid ? 'approved' : (u.status === 'approved' || u.status === 'blocked' ? u.status : 'pending'));
+    const groups = [['pending', 'Waiting for approval'], ['approved', Cloud.opts.approval ? 'Approved' : 'Active'], ['blocked', 'Blocked']];
+    const st = u => (u.uid === Cloud.user.uid ? 'approved' : u.status === 'blocked' ? 'blocked' : (!Cloud.opts.approval || u.status === 'approved') ? 'approved' : 'pending');
     ST.pendingCount = list.filter(u => st(u) === 'pending').length;
     const how = u => (u.provider === 'google.com' ? 'Google' : u.provider === 'password' ? 'Email' : esc(u.provider || '?'));
     const row = u => {
@@ -779,7 +779,7 @@ function openAuth(mode) {
   };
   draw();
 }
-const PRIVACY = `<b>What is stored:</b> your email address (and your name, if you use Google), how you sign in, when you signed up and last visited, whether your account is approved, and your test history (questions, your answers, scores). It is kept in Google Firebase. The site’s owner sees your email, name and those dates, to approve accounts, but not your tests. Photos of written work never leave your device. No ads, no analytics. You can delete your account and everything in it at any time: click your email at the top, then <b>Delete my account</b>.`;
+const PRIVACY = `<b>What is stored:</b> your email address (and your name, if you use Google), how you sign in, when you signed up and last visited, whether your account is active or blocked, and your test history (questions, your answers, scores). It is kept in Google Firebase. The site’s owner sees your email, name and those dates, to manage accounts, but not your tests. Photos of written work never leave your device. No ads, no analytics. You can delete your account and everything in it at any time: click your email at the top, then <b>Delete my account</b>.`;
 function openAccount() {
   const C = Cloud; if (!C.user) return;
   const m = openModal(`<h2>Your account</h2>
@@ -835,7 +835,7 @@ if (window.Cloud) Cloud.onChange(async u => {
   if (u && Cloud.status === 'approved') {
     try { history.cloud = await Cloud.loadHistory(); } catch (e) { history.cloud = []; toast('Could not load your history: ' + Cloud.errorText(e)); }
     offerImport(u);
-    if (Cloud.isAdmin) Cloud.listUsers().then(l => { ST.pendingCount = l.filter(x => x.uid !== u.uid && x.status !== 'approved' && x.status !== 'blocked').length; if (!gateView()) renderHeader(); }).catch(() => {});
+    if (Cloud.isAdmin && Cloud.opts.approval) Cloud.listUsers().then(l => { ST.pendingCount = l.filter(x => x.uid !== u.uid && x.status !== 'approved' && x.status !== 'blocked').length; if (!gateView()) renderHeader(); }).catch(() => {});
   } else history.cloud = null;
   ST.review = null; render();
 });

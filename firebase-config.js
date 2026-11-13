@@ -12,6 +12,7 @@ window.FIREBASE_CONFIG = {
 /* Website behaviour (see cloud.js). adminUid = the site owner's account ID (not secret; also in firestore.rules). */
 window.SITE_OPTIONS = {
   requireAccount: true,   // nothing can be used without signing in
-  approval: true,         // new accounts wait until the admin approves them
+  approval: false,        // false: new accounts can use the site at once, the admin can still Block anyone.
+                          // true: new accounts wait for approval (then restore the 'approved' check in firestore.rules)
   adminUid: "w7PUmVfpeIYyvmxMYDRekHa3wpq1"
 };

@@ -60,7 +60,7 @@ const Cloud = {
     try {
       this.profile = await this._profile(u);
       const s = this.profile.status;
-      this.status = (!this.opts.approval || this.isAdmin) ? 'approved' : (s === 'approved' || s === 'blocked' ? s : 'pending');
+      this.status = this.isAdmin ? 'approved' : s === 'blocked' ? 'blocked' : (!this.opts.approval || s === 'approved') ? 'approved' : 'pending';
     } catch (e) {
       console.error('Profile:', e);
       this.statusError = e;

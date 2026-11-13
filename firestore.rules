@@ -4,8 +4,11 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.uid == 'w7PUmVfpeIYyvmxMYDRekHa3wpq1'; }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    // Open site: every account with a profile may use it, except the ones the admin blocked.
+    // (For approval mode, change the last check back to: .data.get('status', '') == 'approved')
     function approved(uid) {
-      return isAdmin() || get(/databases/$(database)/documents/users/$(uid)).data.get('status', '') == 'approved';
+      return isAdmin() || (exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.get('status', '') != 'blocked');
     }
     // What people may write in their own profile: every field is checked against their sign-in token.
     function ownProfileOk() {
