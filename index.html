@@ -22,7 +22,7 @@
 <script src="formulas.js?v=eb78cbf4"></script>
 <script src="materials.js?v=29223f06"></script>
 <script src="firebase-config.js?v=600524e1"></script>
-<script src="cloud.js?v=f9d0cad4"></script>
+<script src="cloud.js?v=97f25715"></script>
 <style>
 :root {
   --bg: #f4f6f9; --card: #ffffff; --ink: #1d2433; --muted: #5f6b7d; --line: #dde3ec;
@@ -147,6 +147,8 @@ code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
 .kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 13px; }
 .acct { display: flex; align-items: center; gap: 8px; }
 .acct-mail { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+button.acct-mail { text-decoration: underline dotted; text-underline-offset: 3px; }
+.mode:disabled { opacity: .55; cursor: default; }
 .gbtn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
 .orline { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0 4px; }
 .orline::before, .orline::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -174,6 +176,6 @@ code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
   <nav class="tabs" id="tabs"></nav>
 </header>
 <main id="main"></main>
-<script src="app.js?v=abc3cf89"></script>
+<script src="app.js?v=9ea493f0"></script>
 </body>
 </html>

@@ -26,9 +26,11 @@ const Cloud = {
   _emit() { this._listeners.forEach(fn => { try { fn(this.user); } catch (e) { console.error(e); } }); },
   async signUp(email, password) { return (await this.auth.createUserWithEmailAndPassword(email, password)).user; },
   signIn(email, password) { return this.auth.signInWithEmailAndPassword(email, password); },
+  _google() { const p = new G.firebase.auth.GoogleAuthProvider(); p.setCustomParameters && p.setCustomParameters({ prompt: 'select_account' }); return p; },
+  // 'password' or 'google.com': how the signed-in person logs in.
+  provider() { const u = this.auth && this.auth.currentUser; const ids = u ? u.providerData.map(p => p.providerId) : []; return ids.includes('password') ? 'password' : (ids[0] || ''); },
   async signInGoogle() {
-    const provider = new G.firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters && provider.setCustomParameters({ prompt: 'select_account' });
+    const provider = this._google();
     try { return await this.auth.signInWithPopup(provider); }
     catch (e) {
       // Some phones and in-app browsers block popups: fall back to a full-page redirect.
@@ -89,6 +91,26 @@ const Cloud = {
   },
   put(entry) { return this._col().doc(entry.id).set({ json: JSON.stringify(entry), date: entry.date || '', subject: entry.subject || '', kind: entry.kind || '' }); },
   del(id) { return this._col().doc(id).delete(); },
+
+  /* ---- delete my account: history, profile, login ---- */
+  // The person signs in again first (Firebase only removes a login right after a fresh sign-in), so nothing
+  // is deleted when the password is wrong. History goes before the profile, because the rules read the
+  // profile to check approval. A blocked account cannot delete its profile (rules), so the app never offers it.
+  async deleteAccount(password) {
+    const u = this.auth.currentUser;
+    if (!u) throw new Error('You are not signed in.');
+    if (this.isAdmin) throw new Error('The site owner’s account cannot be deleted from the site.');
+    if (this.provider() === 'password') await u.reauthenticateWithCredential(G.firebase.auth.EmailAuthProvider.credential(u.email, password));
+    else await u.reauthenticateWithPopup(this._google());
+    if (this.status === 'approved') {
+      const snap = await this.db.collection('users').doc(u.uid).collection('history').get();
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const b = this.db.batch(); snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit();
+      }
+    }
+    await this.db.collection('users').doc(u.uid).delete();
+    await u.delete();
+  },
   errorText(e) {
     const c = (e && e.code) || '';
     const map = {
@@ -109,6 +131,9 @@ const Cloud = {
       'auth/popup-closed-by-user': 'The Google window was closed before signing in.',
       'auth/cancelled-popup-request': 'The Google window was closed before signing in.',
       'auth/account-exists-with-different-credential': 'An account with this email already exists. Sign in with email and password.',
+      'auth/user-mismatch': 'That is a different Google account. Choose the account you are signed in with.',
+      'auth/requires-recent-login': 'For safety, sign out, sign in again, then retry.',
+      'auth/popup-blocked': 'The browser blocked the Google window. Allow pop-ups for this site and try again.',
       'permission-denied': 'The server refused the request (check the Firestore security rules).',
       'unavailable': 'The server cannot be reached right now. Try again in a moment.',
     };

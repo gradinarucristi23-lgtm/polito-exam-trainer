@@ -166,6 +166,7 @@ function gateView() {
         <div class="card"><h3>Chimica</h3><p class="small muted">Full test and both midterm formats: atoms and bonds, stoichiometry, gases, solutions, thermochemistry, equilibrium, acids and bases, electrochemistry, with the exam tables.</p></div>
         <div class="card"><h3>Informatica (14BHD, Python)</h3><p class="small muted">What does this code print? Strings, lists, dictionaries, loops, functions and files, plus theory and programming tasks with model solutions.</p></div>
       </div>
+      <div class="card"><h3 style="margin-top:0">Privacy</h3><p class="small muted" style="margin:0" id="gPrivacy">${PRIVACY}</p></div>
       <p class="small muted" style="text-align:center">Unofficial project, not affiliated with Politecnico di Torino.</p>`;
     $('#gUp').onclick = () => openAuth('signup'); $('#gIn').onclick = () => openAuth('signin');
   } else if (C.status === 'pending') {
@@ -173,7 +174,9 @@ function gateView() {
       <p>You signed up as <b>${esc(C.user.email)}</b>. The site’s owner approves new accounts by hand. You don’t need to do anything else.</p>
       <p><b>Already approved but still seeing this page?</b> Press <b>Check again</b>, or reload the page (F5 on a computer, pull down or ↻ on a phone).</p>
       <div class="row"><button class="btn primary" id="gCheck">Check again</button><button class="btn" id="gOut">Sign out</button></div>
-      <p class="small muted" style="margin:14px 0 0">Account ID: <code id="gUid">${esc(C.user.uid)}</code> <button class="linkbtn small" id="gCopy">Copy</button></p>`);
+      <p class="small muted" style="margin:14px 0 0">Account ID: <code id="gUid">${esc(C.user.uid)}</code> <button class="linkbtn small" id="gCopy">Copy</button></p>
+      <p class="small muted" style="margin:8px 0 0">Changed your mind? <button class="linkbtn small" id="gDel">Delete my account</button></p>`);
+    $('#gDel').onclick = openDelete;
     $('#gCheck').onclick = async () => { const b = $('#gCheck'); b.disabled = true; b.textContent = 'Checking…'; await C.refreshStatus(); if (C.status === 'pending') { toast('Not approved yet.'); render(); } };
     $('#gCopy').onclick = async () => toast((await copyText(C.user.uid)) ? 'Account ID copied.' : 'Could not copy. Select it and copy by hand.');
     $('#gOut').onclick = () => C.signOut();
@@ -358,7 +361,7 @@ function viewPractice(main) {
   if (ST.sess[k] && !ST.sess[k].finished) return examView(main, ST.sess[k]);
   if (ST.results[k]) return resultsView(main, ST.results[k], () => { delete ST.results[k]; render(); });
   const topic = pref('ptopic', 'mixed'), n = pref('pn', '10'), diff = pref('pdiff', 'random'), instant = pref('instant', true);
-  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — practice by topic</h2>
+  main.innerHTML = drillCard(sub) + `<div class="card"><h2>${esc(sub.name)} — practice by topic</h2>
     <p class="muted small" style="margin-top:0">No timer pressure. Pick a topic to drill, and see the solution right after each answer.</p>
     <div class="field"><label>Topic</label><select id="ptopic"><option value="mixed">All topics (mixed)</option>${sub.engine.TOPICS.map(t => `<option value="${t.id}" ${t.id === topic ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Number of questions</label>${seg('pn', ['5', '10', '15', '20'], n)}</div>
@@ -377,6 +380,60 @@ function viewPractice(main) {
     ST.sess[k] = { id: uid(), kind: 'practice', subject: sub.id, mode: tn, diff: d, questions: qs, answers: qs.map(() => null), flags: qs.map(() => false), cur: 0, start: Date.now(), limit: null, instant: pref('instant', true), scoring: sub.mc };
     render();
   };
+  bindDrills(main, sub);
+}
+
+/* ======================= DRILLS FROM HISTORY ======================= */
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+// Questions answered wrong or left blank in tests and practice, newest first. Answering the same question
+// right later (for example in "Redo my mistakes") takes it off the list.
+function mistakesFor(subId) {
+  const miss = new Map();
+  history.all().filter(x => x.subject === subId && Array.isArray(x.items)).sort((a, b) => (a.date < b.date ? -1 : 1))
+    .forEach(x => x.items.forEach(it => {
+      if (!it || typeof it.q !== 'string' || !Array.isArray(it.opts) || it.ans == null) return;
+      const k = it.q + '\u0001' + it.opts.join('\u0001');
+      miss.delete(k); if (it.chosen !== it.ans) miss.set(k, it);
+    }));
+  return Array.from(miss.values()).reverse();
+}
+// Up to 3 topics with the lowest accuracy over their last 20 answers (smoothed, so 0/1 does not outweigh 3/10).
+function weakTopicsFor(sub) {
+  const byName = new Map(sub.engine.TOPICS.map(t => [t.name, t])), acc = {};
+  history.all().filter(x => x.subject === sub.id && Array.isArray(x.items)).sort((a, b) => (a.date < b.date ? 1 : -1))
+    .forEach(x => x.items.forEach(it => {
+      const t = it && byName.get(it.topicName); if (!t) return;
+      const a = acc[t.id] = acc[t.id] || { t, c: 0, n: 0 }; if (a.n >= 20) return;
+      a.n++; if (it.chosen === it.ans) a.c++;
+    }));
+  const ranked = Object.values(acc).map(a => ({ ...a, p: a.c / a.n, s: (a.c + 1) / (a.n + 2) })).sort((a, b) => a.s - b.s || b.n - a.n);
+  const weak = ranked.filter(a => a.p < 0.8);
+  return (weak.length ? weak : ranked).slice(0, 3);
+}
+function drillCard(sub, where = 'below') {
+  const miss = mistakesFor(sub.id), weak = weakTopicsFor(sub);
+  return `<div class="card"><h3 style="margin-top:0">From your history</h3><div class="modes">
+    <button class="mode" data-drill="miss" ${miss.length ? '' : 'disabled'}><b>Redo my mistakes${miss.length ? ` (${miss.length})` : ''}</b><span class="small muted">${miss.length ? 'Questions you got wrong or left blank, newest first. Answer one right and it leaves the list.' : 'No mistakes saved for this subject yet.'}</span></button>
+    <button class="mode" data-drill="weak" ${weak.length ? '' : 'disabled'}><b>Practice my weakest topics</b><span class="small muted">${weak.length ? 'New questions on: ' + weak.map(a => `${esc(a.t.name)} (${Math.round(100 * a.p)}%)`).join(', ') : 'Take a test or a practice first.'}</span></button>
+  </div><div class="small muted" style="margin-top:8px">Uses the number of questions, difficulty and “show the answer” settings ${where}.</div></div>`;
+}
+function bindDrills(main, sub) { $$('[data-drill]', main).forEach(b => b.onclick = () => startDrill(sub, b.dataset.drill)); }
+function startDrill(sub, what) {
+  const k = sub.id + ':practice', cnt = Number(pref('pn', '10')), d = pref('pdiff', 'random');
+  if (ST.sess[k] && !ST.sess[k].finished && !confirm('A practice is in progress. Replace it?')) return;
+  let qs = [], name;
+  if (what === 'miss') {
+    qs = shuffle(mistakesFor(sub.id).slice(0, cnt).map(it => ({ q: it.q, opts: it.opts.slice(), ans: it.ans, sol: it.sol, topic: it.topic, topicName: it.topicName, level: it.level })));
+    name = 'my mistakes';
+  } else {
+    const weak = weakTopicsFor(sub), used = new Set();
+    try { for (let i = 0; i < cnt; i++) { const q = sub.engine.generate(weak[i % weak.length].t.id, levelFor(d), used); if (q.thId != null) used.add(q.thId); qs.push(q); } } catch (e) { toast('Generation error: ' + e.message); return; }
+    shuffle(qs); name = 'weakest topics (' + weak.map(a => a.t.name).join(', ') + ')';
+  }
+  if (!qs.length) { toast('Nothing to practice yet.'); return; }
+  delete ST.results[k];
+  ST.sess[k] = { id: uid(), kind: 'practice', subject: sub.id, mode: name, diff: what === 'miss' ? 'random' : d, questions: qs, answers: qs.map(() => null), flags: qs.map(() => false), cur: 0, start: Date.now(), limit: null, instant: pref('instant', true), scoring: sub.mc };
+  ST.tab = 'practice'; ST.review = null; render();
 }
 
 /* ======================= WRITTEN EXAM ======================= */
@@ -520,6 +577,7 @@ function viewHistory(main) {
         <div class="stat"><span class="small muted">Written exams graded</span><b>${writtens.length}</b></div></div>
       ${trows.length ? `<h3>Accuracy by topic <span class="small muted">(weakest first, from tests and practice)</span></h3><div class="bars">${trows.map(([t, c, n, p]) => `<div class="barrow"><span>${esc(t)}</span><div class="track"><div class="fill" style="width:${Math.round(p * 100)}%;background:${p < .5 ? 'var(--bad)' : p < .75 ? 'var(--warn)' : 'var(--ok)'}"></div></div><span class="small">${c}/${n}</span></div>`).join('')}</div>` : ''}
     </div>
+    ${trows.length ? drillCard(sub, 'from the Practice tab') : ''}
     <div class="card"><div class="row" style="justify-content:space-between"><div>${seg('hfilt', ['all', 'test', 'practice', 'written'], filt, ['All', 'Computer tests', 'Practice', 'Written'])}</div>
       ${all.length ? '<button class="btn danger" id="clearAll">Delete all for this subject</button>' : ''}</div>
       <div class="tablewrap" style="margin-top:12px">${list.length ? `<table><thead><tr><th>Date</th><th>Type</th><th>Difficulty</th><th>Score</th><th>Result</th><th></th></tr></thead><tbody>
@@ -533,7 +591,7 @@ function viewHistory(main) {
         : (Cloud.user ? 'Import adds a file exported from the Desktop app (or from another browser) to your account. Export saves your history for all subjects to a file. Photos of written answers are not included.'
           : 'Import adds a file exported from the Desktop app to this browser. Sign in first if you want it saved in your account. Photos of written answers are not included.')}</p>
       <div class="row"><button class="btn" id="hExport">Export history to a file</button><button class="btn" id="hImport">Import from a file</button></div></div>`;
-  $('#hExport').onclick = exportHistory; $('#hImport').onclick = importHistory;
+  $('#hExport').onclick = exportHistory; $('#hImport').onclick = importHistory; bindDrills(main, sub);
   bindSeg(main, 'hfilt', v => { setPref('hfilt', v); render(); });
   const hs = $('#hintSignIn'); if (hs) hs.onclick = () => openAuth('signin');
   $$('[data-open]', main).forEach(b => b.onclick = () => { ST.review = history.all().find(x => x.id === b.dataset.open); render(); });
@@ -642,7 +700,8 @@ function renderAccount() {
   if (!C || !C.enabled) { box.innerHTML = ''; return; }
   if (C.state !== 'ready') { box.innerHTML = '<span class="small muted">Connecting…</span>'; return; }
   if (!C.user) { box.innerHTML = '<button class="btn primary" id="btnSignIn">Sign in</button>'; $('#btnSignIn').onclick = () => openAuth('signin'); return; }
-  box.innerHTML = `<span class="small acct-mail" title="${esc(C.user.email)}">${esc(C.user.email)}</span><button class="btn" id="btnSignOut">Sign out</button>`;
+  box.innerHTML = `<button class="linkbtn small acct-mail" id="btnAcct" title="Your account: ${esc(C.user.email)}">${esc(C.user.email)}</button><button class="btn" id="btnSignOut">Sign out</button>`;
+  $('#btnAcct').onclick = openAccount;
   $('#btnSignOut').onclick = () => { if (Object.values(ST.sess).some(s => s && !s.finished) && !confirm('A test is in progress. Sign out anyway?')) return; C.signOut(); };
 }
 function openAuth(mode) {
@@ -688,6 +747,48 @@ function openAuth(mode) {
     };
   };
   draw();
+}
+const PRIVACY = `<b>What is stored:</b> your email address (and your name, if you use Google), how you sign in, when you signed up and last visited, whether your account is approved, and your test history (questions, your answers, scores). It is kept in Google Firebase. The site’s owner sees your email, name and those dates, to approve accounts, but not your tests. Photos of written work never leave your device. No ads, no analytics. You can delete your account and everything in it at any time: click your email at the top, then <b>Delete my account</b>.`;
+function openAccount() {
+  const C = Cloud; if (!C.user) return;
+  const m = openModal(`<h2>Your account</h2>
+    <p><b>${esc(C.user.email)}</b><br><span class="small muted">Signs in with ${C.provider() === 'google.com' ? 'Google' : 'email and password'}</span></p>
+    <p class="small">${PRIVACY}</p>
+    <div class="row">${history.cloud && history.cloud.length ? '<button class="btn" id="acExport">Export my history</button>' : ''}${C.isAdmin || C.status === 'blocked' ? '' : '<button class="btn danger" id="acDel">Delete my account…</button>'}<button class="btn" id="acClose">Close</button></div>
+    ${C.isAdmin ? '<p class="small muted" style="margin:12px 0 0">The site owner’s account can’t be deleted from the site.</p>' : ''}`);
+  m.querySelector('.box').style.maxWidth = '560px';
+  const ex = $('#acExport', m); if (ex) ex.onclick = exportHistory;
+  const dl = $('#acDel', m); if (dl) dl.onclick = () => { m.remove(); openDelete(); };
+  $('#acClose', m).onclick = () => m.remove();
+}
+function openDelete() {
+  const C = Cloud; if (!C.user || C.isAdmin || C.status === 'blocked') return;
+  const pw = C.provider() === 'password', n = (history.cloud || []).length, email = C.user.email, id = C.user.uid;
+  const m = openModal(`<h2>Delete your account?</h2>
+    <p>This permanently deletes:</p>
+    <ul><li>your saved history for all subjects${n ? ` (<b>${n}</b> ${n === 1 ? 'entry' : 'entries'})` : ''}</li><li>your profile (email, name, sign-up dates, approval status)</li><li>your login: <b>${esc(email)}</b> will no longer work on this site</li></ul>
+    <p class="small muted">Photos of written work saved on this device are removed too. It cannot be undone.${n ? ' Want a copy first? Use <b>Export my history</b> before deleting.' : ''}</p>
+    <form id="delForm" novalidate>
+      ${pw ? '<div class="field"><label for="delPass">Enter your password to confirm</label><input id="delPass" type="password" autocomplete="current-password" class="inp"></div>' : '<p class="small">To confirm, choose your Google account in the window that opens.</p>'}
+      <div id="delErr" class="small" style="color:var(--bad);min-height:20px"></div>
+      <div class="row"><button class="btn danger big" id="delGo" type="submit">${pw ? 'Delete my account' : 'Confirm with Google and delete'}</button><button class="btn big" id="delCancel" type="button">Cancel</button></div>
+    </form>`);
+  m.querySelector('.box').style.maxWidth = '520px';
+  const p = $('#delPass', m); if (p) p.focus();
+  $('#delCancel', m).onclick = () => m.remove();
+  $('#delForm', m).onsubmit = async ev => {
+    ev.preventDefault(); const err = $('#delErr', m), go = $('#delGo', m);
+    if (pw && !p.value) { err.textContent = 'Enter your password.'; return; }
+    go.disabled = true; err.textContent = ''; go.textContent = 'Deleting…';
+    const ids = (history.cloud || []).map(x => x.id);
+    Object.values(history._timers).forEach(clearTimeout); history._timers = {};
+    try { await C.deleteAccount(pw ? p.value : ''); }
+    catch (e) { err.textContent = 'Not deleted: ' + C.errorText(e); go.disabled = false; go.textContent = pw ? 'Delete my account' : 'Confirm with Google and delete'; return; }
+    ids.forEach(x => IDB.del(x).catch(() => {}));
+    try { localStorage.removeItem('pet_imported_' + id); } catch (e) { /* storage blocked */ }
+    m.remove();
+    openModal(`<h2>Account deleted</h2><p>Your history, your profile and your login (${esc(email)}) have been deleted.</p><div class="row" style="margin-top:14px"><button class="btn primary" onclick="this.closest('.modal').remove()">OK</button></div>`);
+  };
 }
 function offerImport(u) {
   const local = store.get(HKEY, []); const flag = 'pet_imported_' + u.uid;
