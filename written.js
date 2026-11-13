@@ -1,4 +1,4 @@
-/* Written exam generators: Analisi I (function study + theory), Chemistry (exercises + theory), CS (programming task). */
+/* Written exam generators: Analisi I (function study + theory), Chemistry (exercises + theory), Computer Sciences (theory short answers + programming, exam and midterm). */
 (function (G) {
 'use strict';
 const C = G.Core; const { rnd, F, m, iv, plusConst, sgnTerm, INF, MINF, piTex } = C; const r = String.raw;
@@ -298,14 +298,108 @@ const TASKS = [
   { lv: 6, title: 'Cinema reservations', text: 'A cinema hall has R rows and S seats per row, represented by a table (list of lists) of booleans. Read reservation requests from <code>requests.txt</code> (<code>row seat</code> per line, 1-based). Reject requests outside the hall or for already reserved seats, then print the hall map ("X" reserved, "." free), the occupancy percentage and the row with most free seats.', example: 'R = 5, S = 8 …',
     code: `def main():\n    r, s = 5, 8\n    hall = [[False] * s for _ in range(r)]\n    rejected = 0\n    with open("requests.txt") as f:\n        for line in f:\n            p = line.split()\n            if len(p) != 2:\n                rejected += 1\n                continue\n            i, j = int(p[0]) - 1, int(p[1]) - 1\n            if 0 <= i < r and 0 <= j < s and not hall[i][j]:\n                hall[i][j] = True\n            else:\n                rejected += 1\n    for row in hall:\n        print("".join("X" if x else "." for x in row))\n    taken = sum(row.count(True) for row in hall)\n    print(f"Occupancy: {100 * taken / (r * s):.1f}%")\n    free = [row.count(False) for row in hall]\n    print("Most free seats in row", free.index(max(free)) + 1)\n    print("Rejected:", rejected)\n\nmain()` },
 ];
-function writtenCS(L) {
-  let pool = TASKS.filter(t => Math.abs(t.lv - L) <= 1); if (!pool.length) pool = TASKS; const t = rnd.pick(pool);
-  return { title: 'Computer Science — programming exercise (practice)', max: 15, pass: 8, exercises: [{ title: t.title, points: 15, intro: t.text + '<div class="small" style="margin-top:8px"><b>Example.</b> ' + t.example + '</div>', parts: [
-    { q: 'Input reading and data structures (files / input, lists, dictionaries).', pts: 4, sol: 'Data read correctly (types converted, empty/malformed lines handled), appropriate structure chosen.' },
-    { q: 'Main algorithm (correct results in all cases).', pts: 6, sol: 'Correct logic for the core task, including edge cases (empty input, ties, missing keys).' },
-    { q: 'Output in the requested format.', pts: 3, sol: 'Messages and numeric formatting exactly as requested.' },
-    { q: 'Code organisation: functions, meaningful names, no duplicated code.', pts: 2, sol: 'The required functions are written and reused; the main program is short and readable.' }],
-    extraSol: '<b>Model solution</b> (one of many correct ones):<pre class="code">' + esc(t.code) + '</pre>' }] };
+/* ---------------- Computer Sciences (07JCJ): theory short answers + programming ---------------- */
+const bits = (n, w) => n.toString(2).padStart(w || 0, '0');
+const neg = x => String(x).replace('-', '−');
+// Information-representation question with fresh numbers.
+function csNumQ(L, pts) {
+  const k = rnd.pick(L <= 2 ? ['conv', 'c2', 'nbits'] : L <= 4 ? ['c2', 'sum', 'conv', 'fp'] : ['fp', 'sum', 'c2']);
+  if (k === 'conv') {
+    const n = rnd.int(100, 999), b = bits(n), h = n.toString(16).toUpperCase();
+    const g = bits(n, Math.ceil(b.length / 4) * 4).match(/.{4}/g).join(' ');
+    const chk = h.split('').map((d, i) => `${parseInt(d, 16)}·16<sup>${h.length - 1 - i}</sup>`).join(' + ');
+    return { pts, q: `Convert the decimal number <b>${n}</b> to binary and to hexadecimal, showing the method.`,
+      sol: `Divide by 2 repeatedly and read the remainders from the last one: ${n}<sub>10</sub> = <code>${b}</code><sub>2</sub>. Group the bits by 4 from the right: <code>${g}</code> → <code>${h}</code><sub>16</sub> (check: ${chk} = ${n}). Full marks need the method, not only the result.` };
+  }
+  if (k === 'nbits') {
+    const N = rnd.int(40, 5000), b = Math.ceil(Math.log2(N));
+    return { pts, q: `How many different values can be represented with n bits? What is the minimum number of bits needed to give a different code to each of ${N} objects? Explain.`,
+      sol: `With n bits there are 2<sup>n</sup> different combinations. We need the smallest n with 2<sup>n</sup> ≥ ${N}: 2<sup>${b - 1}</sup> = ${2 ** (b - 1)} is not enough, 2<sup>${b}</sup> = ${2 ** b} is, so <b>${b} bits</b>.` };
+  }
+  if (k === 'c2') {
+    const a = rnd.int(20, 127);
+    return { pts, q: `Represent <b>−${a}</b> in two's complement on 8 bits. Which range of integers can be represented on 8 bits in two's complement?`,
+      sol: `${a} = <code>${bits(a, 8)}</code>; invert every bit: <code>${bits(~a & 255, 8)}</code>; add 1: <code>${bits(256 - a, 8)}</code> = −${a}. On n bits the range is −2<sup>n−1</sup> … 2<sup>n−1</sup>−1, so <b>−128 … +127</b> on 8 bits. (About two thirds of the points for the representation, one third for the range.)` };
+  }
+  if (k === 'sum') {
+    const c = rnd.int(0, 2); let x, y;
+    if (c === 0) { x = rnd.int(50, 120); y = rnd.int(128 - x, 127); }          // positive + positive: overflow
+    else if (c === 1) { x = rnd.int(20, 120); y = -rnd.int(10, 128); }       // different signs: never overflows
+    else { x = -rnd.int(20, 110); y = -rnd.int(20, 110); }                   // negative + negative: maybe
+    const s = x + y, r = s & 255, read = r >= 128 ? r - 256 : r, ov = s > 127 || s < -128;
+    return { pts, q: `Compute ${neg(x)} + (${neg(y)}) in two's complement on 8 bits: write both operands in binary, the 8-bit result, and say whether there is overflow.`,
+      sol: `${neg(x)} = <code>${bits(x & 255, 8)}</code>, ${neg(y)} = <code>${bits(y & 255, 8)}</code>. Add them and keep 8 bits (a carry out of the 8th bit is discarded): <code>${bits(r, 8)}</code>, which reads as ${neg(read)}. ` +
+        (ov ? `<b>Overflow</b>: the true sum ${neg(s)} is outside −128 … 127. Two operands with the same sign gave a result with the opposite sign.`
+            : `<b>No overflow</b>: ${neg(s)} is within −128 … 127${(x < 0) !== (y < 0) ? ' (operands with different signs can never overflow)' : ''}.`) };
+  }
+  // IEEE 754 half precision (as in the course slides): 1 sign bit, 5 exponent bits (bias 15), 10 fraction bits.
+  const sg = rnd.int(0, 1), e = rnd.int(-2, 3), E = e + 15, f = rnd.int(1, 63) * 16, fb = bits(f, 10);
+  const sig = 1 + f / 1024, val = (sg ? -1 : 1) * sig * 2 ** e;
+  const terms = fb.split('').map((d, i) => (d === '1' ? `2<sup>−${i + 1}</sup>` : '')).filter(Boolean).join(' + ');
+  return { pts, q: `The 16 bits <code>${sg}${bits(E, 5)}${fb}</code> are a number in IEEE 754 half precision (1 sign bit, 5 exponent bits with bias 15, 10 fraction bits). What is its decimal value?`,
+    sol: `Sign <code>${sg}</code> → ${sg ? 'negative' : 'positive'}. Exponent <code>${bits(E, 5)}</code> = ${E}, minus the bias 15 → ${neg(e)}. Fraction <code>${fb}</code>: significand 1.${fb.replace(/0+$/, '')}<sub>2</sub> = 1 + ${terms} = ${sig}. Value = ${sg ? '−' : ''}${sig} × 2<sup>${neg(e)}</sup> = <b>${neg(val)}</b>. (Points split between the three fields, the exponent and the final value.)` };
+}
+// Concept questions with model answers (what the answer must contain).
+const CSTH = [
+  ['Describe the von Neumann architecture: name its main components and what each one does.', 'CPU = control unit (fetches and decodes the instructions), ALU (arithmetic and logic operations) and registers (small, very fast memory, e.g. the program counter); main memory (RAM) holding <b>both the program and the data</b> (stored-program idea); input/output devices; a bus (data, address, control) connecting them.'],
+  ['Explain the fetch – decode – execute cycle of a CPU.', 'Fetch: the instruction at the address in the program counter is read from memory and the program counter moves to the next instruction. Decode: the control unit works out the operation and its operands. Execute: the ALU or another unit performs it and stores the result (register or memory). The cycle repeats for every instruction; jumps change the program counter.'],
+  ['What are the differences between main memory (RAM) and secondary storage (hard disk, SSD)? Give at least two for each.', 'RAM: volatile (lost when power is off), fast, smaller and more expensive per byte, directly addressed by the CPU, holds the programs being run and their data. Secondary storage: non-volatile, much slower, much larger and cheaper, holds files permanently; programs must be loaded into RAM to run.'],
+  ['What is the difference between a compiler and an interpreter? Which one does Python use?', 'A compiler translates the whole source program into machine code before running it, producing an executable; many errors are found before execution. An interpreter translates and executes the program statement by statement, so errors appear when that line is reached. Python is interpreted (the source is turned into bytecode run by the Python virtual machine).'],
+  ['What is an algorithm? Which properties must it have?', 'A finite sequence of precise, unambiguous steps that solves a problem. Properties: finiteness (it ends after a finite number of steps), definiteness (each step is unambiguous), effectiveness (each step can actually be carried out), it has inputs and produces outputs, and ideally it is general (solves every instance of the problem).'],
+  ['Which symbols are used in a flowchart and what does each one mean?', 'Oval (terminal): Start / Stop. Parallelogram: input or output. Rectangle: a processing step / assignment. Diamond: a decision with a condition and two exits (True / False). Arrows: the order in which the steps are executed. A good answer can sketch a tiny example (e.g. the lab-team flowchart).'],
+  ['Explain the three kinds of errors in a program (syntax, run-time, logic) with a Python example of each.', 'Syntax error: the code breaks the language rules and does not start at all (e.g. a missing colon: <code>if x > 0</code>). Run-time error: the program starts but crashes during execution (e.g. <code>10 / 0</code> → ZeroDivisionError, <code>int("abc")</code> → ValueError). Logic error: the program runs but gives wrong results (e.g. <code>range(1, n)</code> instead of <code>range(1, n + 1)</code>). Only testing finds logic errors.'],
+  ['What are ASCII and Unicode? Why was Unicode introduced?', 'ASCII codes 128 characters with 7 bits (English letters, digits, punctuation, control characters). It cannot represent accented letters or other alphabets, so Unicode was introduced: it gives a code point to the characters of all writing systems (over a million possible), stored with encodings such as UTF-8 (1–4 bytes, compatible with ASCII). Python 3 strings are Unicode; <code>ord()</code> and <code>chr()</code> convert between characters and codes.'],
+  ['What is the difference between a list and a tuple in Python? When would you use a tuple?', 'A list (<code>[1, 2]</code>) is mutable: elements can be changed, added or removed. A tuple (<code>(1, 2)</code>) is immutable. Tuples are used for fixed groups of values (a record, coordinates, returning several values from a function) and, being immutable, can be dictionary keys or set elements; lists cannot.'],
+  ['Explain mutable and immutable types in Python, with examples. What does <code>a</code> contain after <code>a = [1, 2]; b = a; b.append(3)</code>?', 'Immutable objects (int, float, str, tuple) cannot change: operations create new objects. Mutable objects (list, dict, set) can be changed in place. <code>b = a</code> does not copy the list: both names refer to the same object, so <code>a</code> is <code>[1, 2, 3]</code>. A copy needs <code>a[:]</code> or <code>list(a)</code>.'],
+  ['Explain the difference between local and global variables in Python.', 'A variable assigned inside a function is local: it exists only during that call and is not visible outside. A global variable is defined at the top level of the program; a function can read it, but assigning to the same name inside the function creates a new local variable (unless declared <code>global</code>). Parameters are local variables. Good practice: pass values as parameters and use <code>return</code>.'],
+  ['What is the difference between a <code>while</code> loop and a <code>for</code> loop in Python? Give an example where each is the natural choice.', '<code>for</code> repeats once for each element of a sequence (list, string, <code>range</code>, file lines): natural when the number of iterations is known, e.g. summing a list. <code>while</code> repeats as long as a condition is true and may run zero times: natural when the number of iterations is unknown, e.g. reading input until the user types 0.'],
+  ['What is an exception? Explain how <code>try</code> / <code>except</code> works with an example.', 'An exception is an error detected during execution (e.g. ValueError, FileNotFoundError, ZeroDivisionError) that stops the program unless it is handled. The code that may fail goes in <code>try</code>; if an exception of the listed type occurs, execution jumps to the matching <code>except</code> block instead of crashing. Example: <code>try: n = int(input()) except ValueError: print("Not a number")</code>.'],
+  ['What is short-circuit evaluation of <code>and</code> / <code>or</code>? Give an example where it avoids an error.', 'Python evaluates the right operand only if needed: in <code>A and B</code>, if A is false the result is false without evaluating B; in <code>A or B</code>, if A is true B is skipped. Example: <code>if x != 0 and 10 / x > 2:</code> never divides by zero; <code>if i < len(v) and v[i] > 0:</code> never goes out of range.'],
+  ['What do the modes <code>"r"</code>, <code>"w"</code> and <code>"a"</code> of <code>open()</code> mean? Why should a file be closed, and how does <code>with</code> help?', '<code>"r"</code> reads (the file must exist), <code>"w"</code> writes and erases the previous content (creates the file if missing), <code>"a"</code> appends at the end. Closing frees the resource and makes sure written data is saved to disk. <code>with open(...) as f:</code> closes the file automatically at the end of the block, even if an error occurs.'],
+  ['How does a dictionary work in Python? What can be a key, and how do you add, read and check for a key?', 'A dictionary maps unique keys to values. Keys must be immutable (str, int, tuple), values can be anything. Add or update: <code>d[k] = v</code>; read: <code>d[k]</code> (KeyError if missing) or <code>d.get(k, default)</code>; check: <code>k in d</code>; loop: <code>for k, v in d.items()</code>.'],
+  ['What is the difference between parameters and arguments? What does <code>return</code> do, and what does a function without <code>return</code> give back?', 'Parameters are the names in the function definition (<code>def f(x, y)</code>); arguments are the values passed in the call (<code>f(3, 4)</code>), which are assigned to the parameters. <code>return</code> ends the function and sends a value back to the caller. A function without <code>return</code> (or with a bare <code>return</code>) returns <code>None</code>.'],
+  ['What are the binary, octal and hexadecimal systems, and why is hexadecimal used in computing?', 'Positional systems with base 2 (digits 0–1), 8 (0–7) and 16 (0–9, A–F): each digit is multiplied by a power of the base. Computers work in binary; one hexadecimal digit is exactly 4 bits (one octal digit is 3 bits), so hexadecimal is a compact, easy-to-convert way to write binary values (memory addresses, colours, byte values).'],
+  ['What is the difference between a bit, a byte, a kilobyte (kB) and a kibibyte (KiB)?', 'A bit is a single binary digit (0 or 1). A byte is 8 bits (256 values). A kilobyte (kB) is 1000 bytes (SI prefix), a kibibyte (KiB) is 2<sup>10</sup> = 1024 bytes; likewise MB = 10<sup>6</sup> B and MiB = 2<sup>20</sup> B.'],
+  ['What is pseudo-code and why is it used before writing a program?', 'An informal, language-independent description of an algorithm with structured steps (read, if/else, repeat, write). It lets you design and check the logic of the solution without worrying about the syntax of a language, and it is then translated into code. Like a flowchart, it is part of the problem-solving phase (analysis and design) before implementation.'],
+];
+function csTheory(L, n, pts) {
+  return rnd.shuffle([csNumQ(L, pts)].concat(rnd.shuffle(CSTH).slice(0, n - 1).map(([q, sol]) => ({ q, pts, sol }))));
+}
+function csTask(lv, not) {
+  let pool = TASKS.filter(t => Math.abs(t.lv - lv) <= 1 && t !== not); if (!pool.length) pool = TASKS.filter(t => t !== not);
+  return rnd.pick(pool);
+}
+function csProg(t, title, points, parts, note) {
+  return { title, points, parts, intro: (note ? `<div class="small" style="margin-bottom:8px">${note}</div>` : '') + `<b>${esc(t.title)}.</b> ` + t.text + '<div class="small" style="margin-top:8px"><b>Example.</b> ' + t.example + '</div>',
+    extraSol: '<b>Model solution</b> (one of many correct ones):<pre class="code">' + esc(t.code) + '</pre>' };
+}
+const csSmall = () => [
+  { q: 'The program runs and reads the input correctly.', pts: 1, sol: 'No syntax errors, no crash on the example; values converted to the right types.' },
+  { q: 'Correct results, including edge cases.', pts: 1.5, sol: 'Core logic correct for the example and for edge cases (empty input, ties, missing values).' },
+  { q: 'Output format and clear code.', pts: 0.5, sol: 'Output exactly as requested; meaningful names, no duplicated code.' }];
+function writtenCS(L, mode) {
+  if (mode === 'midterm') {
+    const t1 = csTask(Math.min(L, 3)), t2 = csTask(Math.min(L + 1, 4), t1);
+    return { title: 'Computer Sciences — midterm (practice)', max: 6, pass: 3,
+      passText: 'VALID — can replace the theory part', failText: 'BELOW 3/6 — would not pass the theory part',
+      exercises: [
+        { title: 'Theory questions', points: 3, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”).', parts: csTheory(L, 2, 1.5) },
+        csProg(t1, 'Python exercise', 3, csSmall()),
+        { ...csProg(t2, 'Bonus exercise (optional)', 3, csSmall(), 'Extra exercise: 0–3 bonus points added to your exam score. It does not count in the 6 points above.'), bonus: true },
+      ] };
+  }
+  const t = csTask(L);
+  return { title: 'Computer Sciences — exam (practice)', max: 32, pass: 18,
+    gate: { ex: 0, min: 3, why: 'Theory below 3/6: at the real exam the programming part would not be corrected.' },
+    exercises: [
+      { title: 'Theory — short questions', points: 6, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”). You need at least 3 of these 6 points, otherwise the programming part is not corrected.', parts: csTheory(L, 2, 3) },
+      csProg(t, 'Programming', 26, [
+        { q: 'Input reading and data structures (files / input, lists, dictionaries).', pts: 7, sol: 'Data read correctly (types converted, empty or malformed lines handled), appropriate structures chosen.' },
+        { q: 'Main algorithm (correct results in all cases).', pts: 11, sol: 'Correct logic for the core task, including edge cases (empty input, ties, missing keys).' },
+        { q: 'Output in the requested format.', pts: 4, sol: 'Messages and numeric formatting exactly as requested.' },
+        { q: 'Code organisation: functions, meaningful names, no duplicated code.', pts: 4, sol: 'The required functions are written and reused; the main program is short and readable.' }],
+        'Write it on the computer and run it: <b>a program that does not run is not reviewed</b> (0 points for this whole part).'),
+    ] };
 }
 
 G.Written = { analisi: writtenAnalisi, chem: writtenChem, cs: writtenCS, _tasks: TASKS };

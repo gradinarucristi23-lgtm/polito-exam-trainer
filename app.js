@@ -24,6 +24,7 @@ if (window.Chem) SUBJECTS.push({
 });
 if (window.CS) SUBJECTS.push({
   id: 'cs', name: 'Computer Science', engine: window.CS,
+  hasTest: false, writtenTab: 'Exam',   // the real exam has no multiple-choice test; its questions stay in Practice
   mc: window.CS.MC,
   modes: window.CS.MODES,
   written: window.CS.WRITTEN,
@@ -127,8 +128,10 @@ function renderHeader() {
   const admin = !!(window.Cloud && Cloud.isAdmin);
   if (!admin && ST.tab === 'admin') ST.tab = 'test';
   if (ST.tab === 'tables' && !hasTables(ST.subject)) ST.tab = 'formula';
-  const tabs = TABS.filter(([id]) => (hasMat || id !== 'materials') && (id !== 'tables' || hasTables(ST.subject))).concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
-  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' ? (FORMULA_TAB[ST.subject] || nm) : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
+  const noTest = SUB().hasTest === false;
+  if (ST.tab === 'test' && noTest) ST.tab = 'written';
+  const tabs = TABS.filter(([id]) => (hasMat || id !== 'materials') && (id !== 'tables' || hasTables(ST.subject)) && (id !== 'test' || !noTest)).concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
+  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' ? (FORMULA_TAB[ST.subject] || nm) : id === 'written' ? (SUB().writtenTab || nm) : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
   $$('#tabs .tab').forEach(b => b.onclick = () => { ST.tab = b.dataset.t; ST.review = null; render(); });
   document.title = 'PoliTo Exam Trainer — ' + SUB().name;
 }
@@ -164,7 +167,7 @@ function gateView() {
       <div class="grid3">
         <div class="card"><h3>Analisi Matematica I</h3><p class="small muted">15-question computer tests (sets, limits, asymptotics, derivatives, function study, integrals, ODEs, complex numbers, theory) and written exams with function studies.</p></div>
         <div class="card"><h3>Chimica</h3><p class="small muted">Full test and both midterm formats: atoms and bonds, stoichiometry, gases, solutions, thermochemistry, equilibrium, acids and bases, electrochemistry, with the exam tables.</p></div>
-        <div class="card"><h3>Informatica (14BHD, Python)</h3><p class="small muted">What does this code print? Strings, lists, dictionaries, loops, functions and files, plus theory and programming tasks with model solutions.</p></div>
+        <div class="card"><h3>Computer Sciences (07JCJ, Python)</h3><p class="small muted">The real exam format: short theory questions plus a 26-point programming task, and the midterm with its bonus exercise. Plus “what does this code print?” practice on strings, lists, dictionaries, loops, functions and files.</p></div>
       </div>
       <div class="card"><h3 style="margin-top:0">Privacy</h3><p class="small muted" style="margin:0" id="gPrivacy">${PRIVACY}</p></div>
       <p class="small muted" style="text-align:center">Unofficial project, not affiliated with Politecnico di Torino.</p>`;
@@ -442,31 +445,53 @@ function viewWritten(main) {
   const W = ST.sess[k];
   if (W) return writtenView(main, W);
   const diff = pref('wdiff', 'random'), timer = pref('wtimer', true);
-  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — written exam</h2>
-    <div class="rules small">${esc(sub.written.rules)}</div>
+  const modes = sub.written.modes || [], wm = modes.find(m => m.id === pref('wmode')) || modes[0] || {};
+  const mins = wm.minutes || sub.written.minutes;
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — ${esc((sub.writtenTab || 'written exam').toLowerCase())}</h2>
+    ${modes.length > 1 ? `<div class="field"><label>Type</label><div class="modes">${modes.map(md => `<button class="mode ${md.id === wm.id ? 'on' : ''}" data-wm="${md.id}"><b>${esc(md.name)}</b><span class="small muted">${esc(md.desc)}</span></button>`).join('')}</div></div>` : ''}
+    <div class="rules small">${esc(wm.rules || sub.written.rules)}</div>
     <p class="small muted">Solve it on paper, then upload photos (or a PDF${sub.id === 'cs' ? ' / your .py file' : ''}) of your work. When you finish, the program shows the full solution next to your pages and you give yourself points part by part. Use <b>Copy for Claude</b> to get your photos graded in a Claude chat.</p>
     <div class="field"><label>Difficulty</label>${seg('wdiff', DIFFS, diff, DIFFS.map(d => d === 'random' ? 'Random' : d))}</div>
-    <div class="field"><label><input type="checkbox" id="wtimer" ${timer ? 'checked' : ''}> Countdown timer (${sub.written.minutes} min)</label></div>
-    <div class="row" style="margin-top:14px"><button class="btn primary big" id="go">Generate written exam</button></div></div>`;
+    <div class="field"><label><input type="checkbox" id="wtimer" ${timer ? 'checked' : ''}> Countdown timer (${mins} min)</label></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary big" id="go">Generate ${esc(wm.name ? wm.name.toLowerCase() : 'written exam')}</button></div></div>`;
+  $$('[data-wm]', main).forEach(b => b.onclick = () => { setPref('wmode', b.dataset.wm); render(); });
   bindSeg(main, 'wdiff', v => setPref('wdiff', v));
   $('#wtimer').onchange = e => setPref('wtimer', e.target.checked);
   $('#go').onclick = () => {
-    let exam; try { exam = window.Written[sub.id](levelFor(pref('wdiff', 'random'))); } catch (e) { toast('Generation error: ' + e.message); console.error(e); return; }
-    ST.sess[k] = { id: uid(), kind: 'written', subject: sub.id, diff: pref('wdiff', 'random'), exam, files: [], grades: {}, start: Date.now(), limit: pref('wtimer', true) ? sub.written.minutes * 60 : null, finished: false };
+    let exam; try { exam = window.Written[sub.id](levelFor(pref('wdiff', 'random')), wm.id); } catch (e) { toast('Generation error: ' + e.message); console.error(e); return; }
+    if (wm.rules) exam.rules = wm.rules;
+    ST.sess[k] = { id: uid(), kind: 'written', subject: sub.id, mode: wm.name, diff: pref('wdiff', 'random'), exam, files: [], grades: {}, start: Date.now(), limit: pref('wtimer', true) ? mins * 60 : null, finished: false };
     render();
   };
 }
 function partKey(ei, pi) { return ei + '.' + pi; }
-function writtenTotals(W) { let s = 0; for (const v of Object.values(W.grades)) s += Number(v) || 0; return Math.round(s * 100) / 100; }
+// Sum of the self-assigned points; exercises marked bonus are counted apart, `only` limits it to one exercise.
+function writtenTotals(W, bonus = false, only = null) {
+  let s = 0;
+  for (const [k, v] of Object.entries(W.grades)) {
+    const ei = Number(k.split('.')[0]), e = W.exam.exercises[ei] || {};
+    if (!!e.bonus === bonus && (only == null || only === ei)) s += Number(v) || 0;
+  }
+  return Math.round(s * 100) / 100;
+}
+// Score and verdict. exam.gate = { ex, min, why }: below `min` points in exercise `ex` the exam is not passed.
+function writtenResult(W) {
+  const ex = W.exam, total = writtenTotals(W), bonus = writtenTotals(W, true);
+  const gated = ex.gate && writtenTotals(W, false, ex.gate.ex) < ex.gate.min;
+  const passed = !gated && total >= ex.pass;
+  const bmax = ex.exercises.filter(e => e.bonus).reduce((a, e) => a + e.points, 0);
+  return { total, bonus, passed, label: passed ? (ex.passText || 'PASSED') : (ex.failText || 'NOT PASSED'),
+    note: [gated ? ex.gate.why : '', bmax ? `Bonus: ${fmtNum(bonus)} / ${bmax}` : ''].filter(Boolean).join(' · ') };
+}
 function writtenView(main, W, fromHistory) {
   const sub = SUBJECTS.find(s => s.id === W.subject) || SUB(); const ex = W.exam;
   const done = W.finished;
-  const total = writtenTotals(W);
+  const res = writtenResult(W), total = res.total;
   main.innerHTML = `<div class="card">
       <div class="row" style="justify-content:space-between"><h2>${esc(ex.title)}</h2>
         ${!done ? (W.limit ? `<div class="timer" id="wt">${fmtTime(W.limit - (Date.now() - W.start) / 1000)}</div>` : `<div class="timer calm" id="wt">${fmtTime((Date.now() - W.start) / 1000)}</div>`) : `<span class="muted small">${fmtDate(W.date || new Date().toISOString())} · ${diffLabel(W.diff)}</span>`}</div>
-      <div class="small muted">${esc(sub.written.rules)}</div>
-      ${done ? `<div class="score" style="margin-top:12px"><div class="big" id="wtotal">${fmtNum(total)} / ${ex.max}</div><div class="verdict ${total >= ex.pass ? 'ok' : 'ko'}" id="wverdict">${total >= ex.pass ? 'PASSED' : 'NOT PASSED'}</div><div class="small muted">Self-assessed: enter your points for each part below. Pass mark ${ex.pass}/${ex.max}.</div></div>` : ''}
+      <div class="small muted">${esc(ex.rules || sub.written.rules)}</div>
+      ${done ? `<div class="score" style="margin-top:12px"><div class="big" id="wtotal">${fmtNum(total)} / ${ex.max}</div><div class="verdict ${res.passed ? 'ok' : 'ko'}" id="wverdict">${res.label}</div><div class="small" id="wnote" style="color:var(--warn)">${esc(res.note)}</div><div class="small muted">Self-assessed: enter your points for each part below. Pass mark ${ex.pass}/${ex.max}.</div></div>` : ''}
     </div>
     <div class="card">${ex.exercises.map((e, ei) => `<div class="ex"><h3>${esc(e.title)} <span class="badge">${e.points} pts</span></h3>
       ${e.intro ? `<div class="pq">${rich(e.intro)}</div>` : ''}
@@ -495,7 +520,7 @@ function writtenView(main, W, fromHistory) {
     $('#discard').onclick = () => { if (confirm('Discard this written exam? Nothing will be saved.')) { delete ST.sess[key()]; render(); } };
     ST.tick = setInterval(() => { const el = $('#wt'); if (!el) return clearInterval(ST.tick); const t = (Date.now() - W.start) / 1000; if (W.limit) { el.textContent = fmtTime(W.limit - t); if (W.limit - t <= 0) { el.textContent = 'Time is up'; clearInterval(ST.tick); } } else el.textContent = fmtTime(t); }, 1000);
   } else {
-    const upd = () => { const t = writtenTotals(W); $('#wtotal').textContent = `${fmtNum(t)} / ${ex.max}`; const v = $('#wverdict'); v.className = 'verdict ' + (t >= ex.pass ? 'ok' : 'ko'); v.textContent = t >= ex.pass ? 'PASSED' : 'NOT PASSED'; saveWritten(W, false); };
+    const upd = () => { const r = writtenResult(W); $('#wtotal').textContent = `${fmtNum(r.total)} / ${ex.max}`; const v = $('#wverdict'); v.className = 'verdict ' + (r.passed ? 'ok' : 'ko'); v.textContent = r.label; $('#wnote').textContent = r.note; saveWritten(W, false); };
     $$('[data-g]', main).forEach(inp => inp.oninput = () => { let v = inp.value === '' ? null : Math.max(0, Math.min(Number(inp.max), Number(inp.value))); if (v == null) delete W.grades[inp.dataset.g]; else W.grades[inp.dataset.g] = v; upd(); });
     $$('[data-full]', main).forEach(b => b.onclick = () => { const inp = $(`[data-g="${b.dataset.full}"]`); inp.value = b.dataset.max; inp.oninput(); });
     $$('[data-zero]', main).forEach(b => b.onclick = () => { const inp = $(`[data-g="${b.dataset.zero}"]`); inp.value = 0; inp.oninput(); });
@@ -506,6 +531,7 @@ function writtenView(main, W, fromHistory) {
 function claudePrompt(W, sub) {
   const ex = W.exam; const lines = [];
   lines.push(`I am a first-year student at Politecnico di Torino preparing the ${sub.name} written exam. Below is a practice exam (max ${ex.max} points, pass ${ex.pass}) with the official-style solution and the points for each part. I attached photos of my handwritten solution${sub.id === 'cs' ? ' / my code' : ''}.`);
+  if (ex.rules) lines.push('Exam rules: ' + ex.rules);
   lines.push('Please grade my work part by part as a strict PoliTo examiner: for each part give the points out of the maximum, point out every mistake, and explain what I should have written. Finish with my total score.');
   lines.push('');
   ex.exercises.forEach((e, ei) => {
@@ -544,8 +570,8 @@ function drawThumbs(W) {
 }
 function openModal(html) { const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = `<div class="box">${html}</div>`; m.onclick = e => { if (e.target === m) m.remove(); }; document.body.appendChild(m); return m; }
 function saveWritten(W, first) {
-  const total = writtenTotals(W);
-  const entry = { id: W.id, subject: W.subject, kind: 'written', mode: 'Written exam', diff: W.diff, date: W.date || new Date().toISOString(), dur: W.dur || 0, score: total, max: W.exam.max, passed: total >= W.exam.pass, graded: Object.keys(W.grades).length, exam: W.exam, grades: W.grades, nfiles: W.files.length };
+  const r = writtenResult(W);
+  const entry = { id: W.id, subject: W.subject, kind: 'written', mode: W.mode || 'Written exam', diff: W.diff, date: W.date || new Date().toISOString(), dur: W.dur || 0, score: r.total, max: W.exam.max, passed: r.passed, bonus: r.bonus || undefined, graded: Object.keys(W.grades).length, exam: W.exam, grades: W.grades, nfiles: W.files.length };
   if (first) history.add(entry); else history.update(entry);
   IDB.put(W.id, W.files.map(f => ({ name: f.name, type: f.type, blob: f.blob }))).catch(() => toast('Could not store the files in this browser.'));
 }
@@ -554,7 +580,7 @@ function saveWritten(W, first) {
 function viewHistory(main) {
   if (ST.review) {
     const e = ST.review;
-    if (e.kind === 'written') { const W = { id: e.id, subject: e.subject, diff: e.diff, exam: e.exam, grades: { ...(e.grades || {}) }, files: [], finished: true, date: e.date, dur: e.dur }; writtenView(main, W, true); IDB.get(e.id).then(fs => { if (fs && fs.length) { W.files = fs; drawThumbs(W); } }).catch(() => {}); return; }
+    if (e.kind === 'written') { const W = { id: e.id, subject: e.subject, mode: e.mode, diff: e.diff, exam: e.exam, grades: { ...(e.grades || {}) }, files: [], finished: true, date: e.date, dur: e.dur }; writtenView(main, W, true); IDB.get(e.id).then(fs => { if (fs && fs.length) { W.files = fs; drawThumbs(W); } }).catch(() => {}); return; }
     return resultsView(main, e, () => { ST.review = null; render(); }, true);
   }
   const sub = SUB(); const filt = pref('hfilt', 'all');
@@ -569,19 +595,24 @@ function viewHistory(main) {
   all.filter(x => x.items).forEach(x => x.items.forEach(it => { const t = it.topicName || it.topic; topic[t] = topic[t] || [0, 0]; topic[t][1]++; if (it.chosen === it.ans) topic[t][0]++; }));
   const trows = Object.entries(topic).map(([t, [c, n]]) => [t, c, n, c / n]).sort((a, b) => a[3] - b[3]);
   const cloudHint = window.Cloud && Cloud.enabled && !Cloud.user ? `<div class="rules small">You are not signed in: this history is saved only in this browser. <button class="linkbtn" id="hintSignIn">Sign in or create an account</button> to keep it in your account and see it on any device.</div>` : (window.Cloud && Cloud.user ? `<div class="small muted" style="margin-bottom:8px">Saved in your account (${esc(Cloud.user.email)}). Uploaded photos stay on the device where you added them.</div>` : '');
+  const wPass = writtens.length ? Math.round(100 * writtens.filter(x => x.passed).length / writtens.length) : null;
+  const statsHtml = sub.hasTest === false
+    ? `<div class="stats"><div class="stat"><span class="small muted">${esc(sub.writtenTab || 'Written')}s graded</span><b>${writtens.length}</b></div>
+        <div class="stat"><span class="small muted">Passed</span><b>${wPass == null ? '–' : wPass + '%'}</b></div>
+        <div class="stat"><span class="small muted">Practice sessions</span><b>${all.filter(x => x.kind === 'practice').length}</b></div></div>` : '';
   main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — history</h2>${cloudHint}
-      <div class="stats"><div class="stat"><span class="small muted">Computer tests</span><b>${tests.length}</b></div>
+      ${statsHtml || `<div class="stats"><div class="stat"><span class="small muted">Computer tests</span><b>${tests.length}</b></div>
         <div class="stat"><span class="small muted">Average score</span><b>${avg == null ? '–' : avg + '%'}</b></div>
         <div class="stat"><span class="small muted">Best score</span><b>${best == null ? '–' : fmtNum(best) + ' / ' + sub.mc.max}</b></div>
         <div class="stat"><span class="small muted">Tests passed</span><b>${passRate == null ? '–' : passRate + '%'}</b></div>
-        <div class="stat"><span class="small muted">Written exams graded</span><b>${writtens.length}</b></div></div>
+        <div class="stat"><span class="small muted">Written exams graded</span><b>${writtens.length}</b></div></div>`}
       ${trows.length ? `<h3>Accuracy by topic <span class="small muted">(weakest first, from tests and practice)</span></h3><div class="bars">${trows.map(([t, c, n, p]) => `<div class="barrow"><span>${esc(t)}</span><div class="track"><div class="fill" style="width:${Math.round(p * 100)}%;background:${p < .5 ? 'var(--bad)' : p < .75 ? 'var(--warn)' : 'var(--ok)'}"></div></div><span class="small">${c}/${n}</span></div>`).join('')}</div>` : ''}
     </div>
     ${trows.length ? drillCard(sub, 'from the Practice tab') : ''}
-    <div class="card"><div class="row" style="justify-content:space-between"><div>${seg('hfilt', ['all', 'test', 'practice', 'written'], filt, ['All', 'Computer tests', 'Practice', 'Written'])}</div>
+    <div class="card"><div class="row" style="justify-content:space-between"><div>${sub.hasTest === false ? seg('hfilt', ['all', 'practice', 'written'], filt, ['All', 'Practice', sub.writtenTab || 'Written']) : seg('hfilt', ['all', 'test', 'practice', 'written'], filt, ['All', 'Computer tests', 'Practice', 'Written'])}</div>
       ${all.length ? '<button class="btn danger" id="clearAll">Delete all for this subject</button>' : ''}</div>
       <div class="tablewrap" style="margin-top:12px">${list.length ? `<table><thead><tr><th>Date</th><th>Type</th><th>Difficulty</th><th>Score</th><th>Result</th><th></th></tr></thead><tbody>
-      ${list.map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.kind === 'written' ? 'Written exam' : x.kind === 'practice' ? 'Practice · ' + x.mode : x.mode)}</td><td>${diffLabel(x.diff)}</td>
+      ${list.map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.kind === 'written' ? (x.mode || 'Written exam') + (x.bonus ? ` (+${fmtNum(x.bonus)} bonus)` : '') : x.kind === 'practice' ? 'Practice · ' + x.mode : x.mode)}</td><td>${diffLabel(x.diff)}</td>
         <td>${x.kind === 'practice' ? `${x.right}/${x.items.length}` : x.kind === 'written' && !x.graded ? '<span class="muted">not graded</span>' : `${fmtNum(x.score)} / ${fmtNum(x.max)}`}</td>
         <td>${x.passed == null ? '' : x.kind === 'written' && !x.graded ? '' : `<span class="badge ${x.passed ? 'ok' : 'ko'}">${x.passed ? 'passed' : 'not passed'}</span>`}</td>
         <td style="white-space:nowrap"><button class="btn" data-open="${x.id}">Review</button> <button class="btn danger" data-del="${x.id}" title="Delete">×</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nothing here yet. Take a test and it will appear here automatically.</p>'}</div></div>

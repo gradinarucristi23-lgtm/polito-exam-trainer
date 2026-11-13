@@ -1,4 +1,4 @@
-/* Computer Science (14BHD, Python) — multiple-choice generator.
+/* Computer Sciences (07JCJ, Python) — multiple-choice generator.
    Code questions carry {code, out} so the expected output can be checked against real Python. */
 (function (G) {
 'use strict';
@@ -382,8 +382,13 @@ function generate(topicId, level, used) {
 }
 const QUIZ = ['numbers', 'numbers', 'logic', 'expr', 'expr', 'strings', 'strings', 'cond', 'loops', 'loops', 'functions', 'lists', 'lists', 'dicts', 'files'];
 const MODES = [{ id: 'quizT', name: 'Quiz with theory', desc: '12 code/number questions + 3 theory questions', layout: ['numbers', 'numbers', 'logic', 'expr', 'strings', 'strings', 'cond', 'loops', 'loops', 'functions', 'lists', 'dicts', 'theory', 'theory', 'theory'] }, { id: 'quiz', name: 'Code & numbers only', desc: '15 questions: number systems, logic, Python code reading', layout: QUIZ }];
-const MC = { minutes: 30, nOpts: 4, right: 1, wrong: 0, blank: 0, max: 15, pass: 8, rules: 'ASSUMED FORMAT (send me the official 14BHD rules and I will adjust it): 15 multiple-choice questions on number systems, logic and Python code · 30 minutes · correct +1, wrong/blank 0 · pass with at least 8/15.' };
-const WRITTEN = { minutes: 90, max: 15, pass: 8, rules: 'ASSUMED FORMAT: programming exercise in Python · 90 minutes · max 15 points (self-graded with the rubric) · pass with at least 8. Upload your .py file or photos.' };
+// The real exam has no multiple-choice test: these settings only score the Practice tab.
+const MC = { minutes: 30, nOpts: 4, right: 1, wrong: 0, blank: 0, max: 15, pass: 8, rules: 'Practice questions only: the real exam has no multiple-choice test.' };
+const FINAL_RULES = 'Official format (course slides): short theory questions, 6 points (you need at least 3/6, otherwise the programming part is not corrected), and a programming task, 26 points, written and run on the lab computer (a program that does not run is not reviewed). Pass with 18 out of 32. Not in the slides, my assumptions: 2 theory questions of 3 points each, 120 minutes.';
+const MIDTERM_RULES = 'Official format (course slides; tentative date 23 November, during a lab; only for students attending the course for the first time): 2 theory questions + 1 Python exercise, 0-6 points, which can replace the theory part of the exam (you choose at each exam whether to use them), plus 1 extra Python exercise for 0-3 bonus points added to your exam score. Not in the slides, my assumptions: the 6 points split as 1.5 + 1.5 for theory and 3 for the exercise, 90 minutes.';
+const WRITTEN = { minutes: 120, max: 32, pass: 18, rules: FINAL_RULES, modes: [
+  { id: 'final', name: 'Exam', desc: 'Theory questions (6 pts, at least 3 needed) + programming (26 pts)', minutes: 120, rules: FINAL_RULES },
+  { id: 'midterm', name: 'Midterm', desc: '2 theory questions + 1 Python exercise (6 pts) + bonus exercise (3 pts)', minutes: 90, rules: MIDTERM_RULES }] };
 G.CS = { TOPICS, generate, MODES, MC, WRITTEN, helpers: { repr, pySlice, fdiv, pmod, pyFloat, esc } };
 G.FORMULAS = G.FORMULAS || {};
 G.FORMULAS.cs = () => `<h2>Python & computer basics — cheat sheet</h2>
