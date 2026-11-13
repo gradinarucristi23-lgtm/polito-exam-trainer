@@ -122,15 +122,105 @@ function renderHeader() {
   const hasMat = Object.values(window.MATERIALS || {}).some(l => l && l.length);
   if (!hasMat && ST.tab === 'materials') ST.tab = 'test';
   renderAccount();
-  $('#tabs').innerHTML = TABS.filter(([id]) => hasMat || id !== 'materials').map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' && ST.subject === 'chem' ? 'Tables' : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
+  const admin = !!(window.Cloud && Cloud.isAdmin);
+  if (!admin && ST.tab === 'admin') ST.tab = 'test';
+  const tabs = TABS.filter(([id]) => hasMat || id !== 'materials').concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
+  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' && ST.subject === 'chem' ? 'Tables' : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
   $$('#tabs .tab').forEach(b => b.onclick = () => { ST.tab = b.dataset.t; ST.review = null; render(); });
   document.title = 'PoliTo Exam Trainer — ' + SUB().name;
 }
 function render() {
-  renderHeader(); clearInterval(ST.tick); document.onkeydown = null;
+  clearInterval(ST.tick); document.onkeydown = null;
+  if (gateView()) return;
+  renderHeader();
   const main = $('#main');
-  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula })[ST.tab](main);
+  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, admin: viewAdmin })[ST.tab](main);
   window.scrollTo(0, 0);
+}
+
+/* ======================= SIGN-IN GATE (website with requireAccount) ======================= */
+// Shows the welcome / waiting / blocked screen instead of the app. Returns true when it did.
+function gateView() {
+  const C = window.Cloud;
+  if (!C || !C.gate) return false;
+  if (C.state === 'ready' && C.user && C.status === 'approved') return false;
+  $('#subjectPills').innerHTML = ''; $('#tabs').innerHTML = ''; renderAccount();
+  document.title = 'PoliTo Exam Trainer – practice tests for Analisi I, Chimica and Informatica';
+  const main = $('#main'); const box = inner => `<div class="card gate">${inner}</div>`;
+  if (C.failed) {
+    main.innerHTML = box(`<h2>Can't connect right now</h2><p>The sign-in service could not be reached. Check your internet connection and reload the page.</p><button class="btn primary" id="gReload">Reload</button>`);
+    $('#gReload').onclick = () => location.reload();
+  } else if (C.state !== 'ready') {
+    main.innerHTML = box('<p class="muted" style="margin:0">Loading…</p>');
+  } else if (!C.user) {
+    const appr = C.opts.approval;
+    main.innerHTML = `<section class="card hero"><h1>Practice for your first-year exams at PoliTo</h1>
+        <p>Timed computer tests that follow the real exam rules, written exams you can photograph and grade, practice by topic with full solutions, and your whole history with accuracy per topic. New questions every time.</p>
+        <div class="row" style="margin-top:16px"><button class="btn primary big" id="gUp">Create an account</button><button class="btn big" id="gIn">Sign in</button></div>
+        <p class="small muted" style="margin:12px 0 0">${appr ? 'Free. New accounts are approved by the site’s owner before first use; to do that, the owner sees the email address you sign up with.' : 'Free. Sign in with Google or with your email.'}</p></section>
+      <div class="grid3">
+        <div class="card"><h3>Analisi Matematica I</h3><p class="small muted">15-question computer tests (sets, limits, asymptotics, derivatives, function study, integrals, ODEs, complex numbers, theory) and written exams with function studies.</p></div>
+        <div class="card"><h3>Chimica</h3><p class="small muted">Full test and both midterm formats: atoms and bonds, stoichiometry, gases, solutions, thermochemistry, equilibrium, acids and bases, electrochemistry, with the exam tables.</p></div>
+        <div class="card"><h3>Informatica (14BHD, Python)</h3><p class="small muted">What does this code print? Strings, lists, dictionaries, loops, functions and files, plus theory and programming tasks with model solutions.</p></div>
+      </div>
+      <p class="small muted" style="text-align:center">Unofficial project, not affiliated with Politecnico di Torino.</p>`;
+    $('#gUp').onclick = () => openAuth('signup'); $('#gIn').onclick = () => openAuth('signin');
+  } else if (C.status === 'pending') {
+    main.innerHTML = box(`<h2>Your account is waiting for approval</h2>
+      <p>You signed up as <b>${esc(C.user.email)}</b>. The site’s owner approves new accounts by hand. You don’t need to do anything else: come back later, or press <b>Check again</b>.</p>
+      <div class="row"><button class="btn primary" id="gCheck">Check again</button><button class="btn" id="gOut">Sign out</button></div>
+      <p class="small muted" style="margin:14px 0 0">Account ID: <code id="gUid">${esc(C.user.uid)}</code> <button class="linkbtn small" id="gCopy">Copy</button></p>`);
+    $('#gCheck').onclick = async () => { const b = $('#gCheck'); b.disabled = true; b.textContent = 'Checking…'; await C.refreshStatus(); if (C.status === 'pending') { toast('Not approved yet.'); render(); } };
+    $('#gCopy').onclick = async () => toast((await copyText(C.user.uid)) ? 'Account ID copied.' : 'Could not copy. Select it and copy by hand.');
+    $('#gOut').onclick = () => C.signOut();
+  } else if (C.status === 'blocked') {
+    main.innerHTML = box(`<h2>This account can’t use the site</h2><p>The site’s owner has blocked <b>${esc(C.user.email)}</b>. If you think this is a mistake, contact the owner.</p><button class="btn" id="gOut">Sign out</button>`);
+    $('#gOut').onclick = () => C.signOut();
+  } else {
+    main.innerHTML = box(`<h2>Your account could not be loaded</h2><p>${esc(C.errorText(C.statusError))}</p><div class="row"><button class="btn primary" id="gCheck">Try again</button><button class="btn" id="gOut">Sign out</button></div>`);
+    $('#gCheck').onclick = () => C.refreshStatus();
+    $('#gOut').onclick = () => C.signOut();
+  }
+  window.scrollTo(0, 0);
+  return true;
+}
+document.addEventListener('visibilitychange', () => {
+  const C = window.Cloud;
+  if (!document.hidden && C && C.user && C.status === 'pending') C.refreshStatus();
+});
+
+/* ======================= ADMIN (site owner only) ======================= */
+function viewAdmin(main) {
+  main.innerHTML = '<div class="card"><h2>Accounts</h2><p class="muted">Loading…</p></div>';
+  Cloud.listUsers().then(list => {
+    if (ST.tab !== 'admin') return;
+    const groups = [['pending', 'Waiting for approval'], ['approved', 'Approved'], ['blocked', 'Blocked']];
+    const st = u => (u.uid === Cloud.user.uid ? 'approved' : (u.status === 'approved' || u.status === 'blocked' ? u.status : 'pending'));
+    ST.pendingCount = list.filter(u => st(u) === 'pending').length;
+    const how = u => (u.provider === 'google.com' ? 'Google' : u.provider === 'password' ? 'Email' : esc(u.provider || '?'));
+    const row = u => {
+      const s = st(u), me = u.uid === Cloud.user.uid;
+      const acts = me ? '<span class="badge">you · admin</span>'
+        : s === 'pending' ? `<button class="btn primary" data-set="approved" data-u="${esc(u.uid)}">Approve</button><button class="btn danger" data-set="blocked" data-u="${esc(u.uid)}">Block</button>`
+        : s === 'approved' ? `<button class="btn danger" data-set="blocked" data-u="${esc(u.uid)}">Block</button>`
+        : `<button class="btn" data-set="approved" data-u="${esc(u.uid)}">Unblock</button>`;
+      return `<div class="urow"><div class="uinfo"><b>${esc(u.email || '(no email)')}</b>${u.name ? ` <span class="muted">· ${esc(u.name)}</span>` : ''}
+          <div class="small muted">${how(u)}${u.provider === 'password' && !u.verified ? ' · <span style="color:var(--warn)">email not verified</span>' : ''} · signed up ${u.created ? fmtDate(u.created) : '?'}${u.lastSeen ? ' · last visit ' + fmtDate(u.lastSeen) : ''}</div></div>
+        <div class="row uacts">${acts}</div></div>`;
+    };
+    main.innerHTML = `<div class="card"><h2>Accounts</h2>
+        <p class="small muted">New accounts wait here until you approve them. Blocked people can’t use the site until you unblock them. To delete an account completely, use the Firebase console (Authentication → Users).</p></div>
+      ${groups.map(([g, title]) => { const us = list.filter(u => st(u) === g); return `<div class="card"><h3>${title} <span class="muted">(${us.length})</span></h3>${us.length ? us.map(row).join('') : '<p class="muted small" style="margin:0">Nobody.</p>'}</div>`; }).join('')}`;
+    renderHeader();
+    $$('[data-set]', main).forEach(b => b.onclick = async () => {
+      const u = list.find(x => x.uid === b.dataset.u), to = b.dataset.set;
+      if (to === 'blocked' && !confirm(`Block ${u.email}? They will not be able to use the site until you unblock them.`)) return;
+      $$('[data-set]', main).forEach(x => { x.disabled = true; });
+      try { await Cloud.setStatus(u.uid, to); toast(`${u.email}: ${to === 'approved' ? 'approved' : 'blocked'}.`); }
+      catch (e) { toast('Not changed: ' + Cloud.errorText(e)); }
+      viewAdmin(main);
+    });
+  }).catch(e => { if (ST.tab === 'admin') main.innerHTML = `<div class="card"><h2>Accounts</h2><p>Could not load the accounts: ${esc(Cloud.errorText(e))}</p></div>`; });
 }
 
 /* ======================= COMPUTER TEST ======================= */
@@ -579,7 +669,7 @@ function openAuth(mode) {
       if (up && pass !== $('#authPass2', box).value) { err.textContent = 'The two passwords are different.'; return; }
       go.disabled = true; err.textContent = '';
       try {
-        if (up) { await Cloud.signUp(email, pass); m.remove(); toast('Account created. You are signed in.'); }
+        if (up) { await Cloud.signUp(email, pass); m.remove(); toast(Cloud.opts.approval ? 'Account created.' : 'Account created. You are signed in.'); }
         else if (reset) { await Cloud.resetPassword(email); err.style.color = 'var(--ok)'; err.textContent = 'Email sent. Check your inbox (and spam folder).'; }
         else { await Cloud.signIn(email, pass); m.remove(); toast('Signed in.'); }
       } catch (e) { err.style.color = 'var(--bad)'; err.textContent = Cloud.errorText(e); }
@@ -599,9 +689,10 @@ function offerImport(u) {
   $('#impNo', m).onclick = () => { store.set(flag, true); m.remove(); };
 }
 if (window.Cloud) Cloud.onChange(async u => {
-  if (u) {
+  if (u && Cloud.status === 'approved') {
     try { history.cloud = await Cloud.loadHistory(); } catch (e) { history.cloud = []; toast('Could not load your history: ' + Cloud.errorText(e)); }
     offerImport(u);
+    if (Cloud.isAdmin) Cloud.listUsers().then(l => { ST.pendingCount = l.filter(x => x.uid !== u.uid && x.status !== 'approved' && x.status !== 'blocked').length; if (!gateView()) renderHeader(); }).catch(() => {});
   } else history.cloud = null;
   ST.review = null; render();
 });

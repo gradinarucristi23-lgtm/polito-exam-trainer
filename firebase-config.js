@@ -9,3 +9,9 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "25753234128",
   appId: "1:25753234128:web:d3fa65b54350138ea68cd5"
 };
+/* Website behaviour (see cloud.js). adminUid = the site owner's account ID (not secret; also in firestore.rules). */
+window.SITE_OPTIONS = {
+  requireAccount: true,   // nothing can be used without signing in
+  approval: true,         // new accounts wait until the admin approves them
+  adminUid: ""
+};

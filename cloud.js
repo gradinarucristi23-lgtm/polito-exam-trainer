@@ -1,22 +1,30 @@
 /* Accounts + cloud history (Firebase Auth + Firestore).
    Active only when the page is served over http(s) AND firebase-config.js sets window.FIREBASE_CONFIG.
-   Otherwise the program works exactly as before, with history in the browser only. */
+   Otherwise the program works exactly as before, with history in the browser only.
+   window.SITE_OPTIONS (website only):
+     requireAccount  the site can only be used after signing in
+     approval        new accounts wait until the admin approves them
+     adminUid        the account ID of the site's owner (sees the Admin tab) */
 (function (G) {
 'use strict';
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const cfg = G.FIREBASE_CONFIG;
+const opts = G.SITE_OPTIONS || {};
 const Cloud = {
   enabled: !!(cfg && cfg.apiKey && /^https?:$/.test(location.protocol)),
+  opts,
   state: 'off',            // off | loading | ready
+  failed: false,           // the account service could not be loaded
   user: null,
+  status: null,            // approved | pending | blocked | error (only while signed in)
+  statusError: null,
+  profile: null,
   _listeners: [],
+  get gate() { return !!(this.opts.requireAccount && cfg && cfg.apiKey && /^https?:$/.test(location.protocol)); },
+  get isAdmin() { return !!(this.user && this.opts.adminUid && this.user.uid === this.opts.adminUid); },
   onChange(fn) { this._listeners.push(fn); },
   _emit() { this._listeners.forEach(fn => { try { fn(this.user); } catch (e) { console.error(e); } }); },
-  async signUp(email, password) {
-    const cred = await this.auth.createUserWithEmailAndPassword(email, password);
-    try { await this.db.collection('users').doc(cred.user.uid).set({ email, created: new Date().toISOString() }, { merge: true }); } catch (e) { /* profile doc is optional */ }
-    return cred.user;
-  },
+  async signUp(email, password) { return (await this.auth.createUserWithEmailAndPassword(email, password)).user; },
   signIn(email, password) { return this.auth.signInWithEmailAndPassword(email, password); },
   async signInGoogle() {
     const provider = new G.firebase.auth.GoogleAuthProvider();
@@ -30,6 +38,48 @@ const Cloud = {
   },
   signOut() { return this.auth.signOut(); },
   resetPassword(email) { return this.auth.sendPasswordResetEmail(email); },
+
+  /* ---- profile + approval status (users/{uid}) ---- */
+  // Writes the person's own profile; the Firestore rules check every field against their sign-in token
+  // and only allow 'pending' as the starting status.
+  async _profile(u) {
+    const ref = this.db.collection('users').doc(u.uid);
+    const tok = await u.getIdTokenResult();
+    const now = new Date().toISOString();
+    const snap = await ref.get(); const old = snap.exists ? snap.data() : {};
+    const doc = { email: tok.claims.email || '', verified: !!tok.claims.email_verified, provider: tok.signInProvider || '',
+      name: String(u.displayName || '').slice(0, 100), created: old.created || now, lastSeen: now };
+    if (!old.status) doc.status = 'pending';
+    await ref.set(doc, { merge: true });
+    return { ...old, ...doc };
+  },
+  async _loadStatus(u) {
+    this.statusError = null;
+    try {
+      this.profile = await this._profile(u);
+      const s = this.profile.status;
+      this.status = (!this.opts.approval || this.isAdmin) ? 'approved' : (s === 'approved' || s === 'blocked' ? s : 'pending');
+    } catch (e) {
+      console.error('Profile:', e);
+      this.statusError = e;
+      this.status = this.opts.approval && !this.isAdmin ? 'error' : 'approved';
+    }
+  },
+  async refreshStatus() {
+    const u = this.auth && this.auth.currentUser; if (!u) return;
+    await this._loadStatus(u); this._emit();
+  },
+
+  /* ---- admin ---- */
+  async listUsers() {
+    const snap = await this.db.collection('users').get(); const out = [];
+    snap.forEach(d => out.push({ uid: d.id, ...d.data() }));
+    out.sort((a, b) => ((a.created || '') < (b.created || '') ? 1 : -1));
+    return out;
+  },
+  setStatus(uid, status) { return this.db.collection('users').doc(uid).update({ status, decided: new Date().toISOString() }); },
+
+  /* ---- history ---- */
   _col() { return this.db.collection('users').doc(this.user.uid).collection('history'); },
   async loadHistory() {
     const snap = await this._col().get(); const out = [];
@@ -51,6 +101,7 @@ const Cloud = {
       'auth/invalid-login-credentials': 'Wrong email or password.',
       'auth/wrong-password': 'Wrong email or password.',
       'auth/user-not-found': 'No account with this email. Create one first.',
+      'auth/user-disabled': 'This account has been disabled by the site owner.',
       'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
       'auth/network-request-failed': 'No internet connection. Check your network and try again.',
       'auth/unauthorized-domain': 'This website address is not authorized in Firebase (Authentication → Settings → Authorized domains).',
@@ -72,8 +123,16 @@ if (Cloud.enabled) {
       if (!G.firebase) for (const f of ['app', 'auth', 'firestore']) await loadScript(SDK + 'firebase-' + f + '-compat.js');
       if (!G.firebase.apps.length) G.firebase.initializeApp(cfg);
       Cloud.auth = G.firebase.auth(); Cloud.db = G.firebase.firestore();
-      Cloud.auth.onAuthStateChanged(u => { Cloud.user = u ? { uid: u.uid, email: u.email } : null; Cloud.state = 'ready'; Cloud._emit(); });
-    } catch (e) { console.error('Accounts unavailable:', e); Cloud.enabled = false; Cloud.state = 'off'; Cloud._emit(); }
+      Cloud.auth.onAuthStateChanged(async u => {
+        Cloud.user = u ? { uid: u.uid, email: u.email } : null;
+        Cloud.status = null; Cloud.profile = null; Cloud.statusError = null;
+        if (u) {
+          await Cloud._loadStatus(u);
+          if (!Cloud.auth.currentUser || Cloud.auth.currentUser.uid !== u.uid) return;   // signed out meanwhile
+        }
+        Cloud.state = 'ready'; Cloud._emit();
+      });
+    } catch (e) { console.error('Accounts unavailable:', e); Cloud.enabled = false; Cloud.failed = true; Cloud.state = 'off'; Cloud._emit(); }
   })();
 }
 G.Cloud = Cloud;
