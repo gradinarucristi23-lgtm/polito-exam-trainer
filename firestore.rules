@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.uid == 'ADMIN_UID_HERE'; }
+    function isAdmin() { return signedIn() && request.auth.uid == 'w7PUmVfpeIYyvmxMYDRekHa3wpq1'; }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function approved(uid) {
       return isAdmin() || get(/databases/$(database)/documents/users/$(uid)).data.get('status', '') == 'approved';

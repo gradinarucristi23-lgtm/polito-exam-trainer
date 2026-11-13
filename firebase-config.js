@@ -13,5 +13,5 @@ window.FIREBASE_CONFIG = {
 window.SITE_OPTIONS = {
   requireAccount: true,   // nothing can be used without signing in
   approval: true,         // new accounts wait until the admin approves them
-  adminUid: ""
+  adminUid: "w7PUmVfpeIYyvmxMYDRekHa3wpq1"
 };
