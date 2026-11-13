@@ -1,0 +1,528 @@
+/* PoliTo Exam Trainer — user interface */
+(function () {
+'use strict';
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const LETTERS = 'abcdef';
+
+/* ======================= EXAM RULES (edit here) ======================= */
+const SUBJECTS = [];
+if (window.Engine) SUBJECTS.push({
+  id: 'analisi', name: 'Analisi I', engine: window.Engine,
+  mc: { minutes: 45, nOpts: 4, right: 1, wrong: 0, blank: 0, max: 15, pass: 8,
+    rules: '15 multiple-choice questions (including theory) · 45 minutes · correct +1, wrong or blank 0 · pass with at least 8/15. A formula sheet is allowed.' },
+  modes: [{ id: 'full', name: 'Computer test', desc: '15 questions on the whole syllabus', layout: window.Engine.EXAM_LAYOUT }],
+  written: { minutes: 90, max: 15, pass: 8, rules: '2 exercises (function study + theory/exercise) · 90 minutes · max 15 points · pass with at least 8.' },
+});
+if (window.Chem) SUBJECTS.push({
+  id: 'chem', name: 'Chemistry', engine: window.Chem,
+  mc: { minutes: 25, nOpts: 5, right: 0.6, wrong: -0.12, blank: 0, max: 9, pass: 6,
+    rules: '15 multiple-choice questions, 5 options each · 25 minutes · correct +0.6, wrong −0.12, blank 0 · admitted to the written test with at least 6/9.' },
+  modes: window.Chem.MODES,
+  written: { minutes: 70, max: 22, pass: 12, rules: 'Exercises + theory questions · 70 minutes · max 22 points · pass with at least 12. Periodic table, E° and ΔH°f tables are provided (see the Tables tab).' },
+});
+if (window.CS) SUBJECTS.push({
+  id: 'cs', name: 'Computer Science', engine: window.CS,
+  mc: window.CS.MC,
+  modes: window.CS.MODES,
+  written: window.CS.WRITTEN,
+});
+const TABS = [['test', 'Computer test'], ['written', 'Written exam'], ['practice', 'Practice'], ['history', 'History'], ['materials', 'Materials'], ['formula', 'Formula sheet']];
+const DIFFS = ['random', '1', '2', '3', '4', '5', '6'];
+const diffLabel = d => (d === 'random' ? 'Random' : 'Level ' + d);
+
+/* ======================= storage ======================= */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast('Could not save: browser storage is full or blocked.'); return false; } },
+};
+const HKEY = 'pet_history_v1';
+// History lives in browser storage, or in the user's account (Firestore) while signed in.
+const history = {
+  cloud: null, _timers: {},
+  all() { return this.cloud ? this.cloud.slice() : store.get(HKEY, []); },
+  _local(list) { return store.set(HKEY, list); },
+  _push(e, now) {
+    if (!(window.Cloud && Cloud.user)) return;
+    clearTimeout(this._timers[e.id]);
+    const send = () => Cloud.put(e).catch(err => toast('Not saved to your account: ' + Cloud.errorText(err)));
+    if (now) send(); else this._timers[e.id] = setTimeout(send, 1200);
+  },
+  add(e) { if (this.cloud) { this.cloud.unshift(e); this._push(e, true); } else { const l = store.get(HKEY, []); l.unshift(e); this._local(l); } },
+  update(e) {
+    if (this.cloud) { const i = this.cloud.findIndex(x => x.id === e.id); if (i >= 0) this.cloud[i] = e; else this.cloud.unshift(e); this._push(e); }
+    else { const l = store.get(HKEY, []); const i = l.findIndex(x => x.id === e.id); if (i >= 0) { l[i] = e; this._local(l); } }
+  },
+  remove(id) {
+    if (this.cloud) { this.cloud = this.cloud.filter(x => x.id !== id); clearTimeout(this._timers[id]); Cloud.del(id).catch(err => toast(Cloud.errorText(err))); }
+    else this._local(store.get(HKEY, []).filter(x => x.id !== id));
+    IDB.del(id).catch(() => {});
+  },
+};
+const IDB = {
+  _db: null,
+  open() { if (this._db) return Promise.resolve(this._db); return new Promise((res, rej) => { const rq = indexedDB.open('pet_files', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('files'); rq.onsuccess = () => { this._db = rq.result; res(this._db); }; rq.onerror = () => rej(rq.error); }); },
+  async tx(mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction('files', mode); const st = t.objectStore('files'); const r = fn(st); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); },
+  put(k, v) { return this.tx('readwrite', s => s.put(v, k)); },
+  get(k) { return this.tx('readonly', s => s.get(k)); },
+  del(k) { return this.tx('readwrite', s => s.delete(k)); },
+};
+
+/* ======================= helpers ======================= */
+function rich(s) {
+  return String(s ?? '').replace(/\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]/g, (m0, a, b) => {
+    try { return katex.renderToString(a !== undefined ? a : b, { displayMode: b !== undefined, throwOnError: false, strict: 'ignore' }); } catch (e) { return esc(m0); }
+  });
+}
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+const fmtTime = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + String(mm).padStart(2, '0') : mm) + ':' + String(ss).padStart(2, '0'); };
+const fmtNum = x => (Math.round(x * 100) / 100).toString();
+const fmtDate = iso => { const d = new Date(iso); return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const levelFor = d => (d === 'random' ? 1 + Math.floor(Math.random() * 6) : Number(d));
+function seg(name, values, cur, labels) { return `<div class="seg" data-seg="${name}">` + values.map((v, i) => `<button type="button" data-v="${v}" class="${v === cur ? 'on' : ''}">${labels ? labels[i] : v}</button>`).join('') + '</div>'; }
+function bindSeg(root, name, fn) { $$(`[data-seg="${name}"] button`, root).forEach(b => b.onclick = () => { $$(`[data-seg="${name}"] button`, root).forEach(x => x.classList.remove('on')); b.classList.add('on'); fn(b.dataset.v); }); }
+function htmlToText(html) { const d = document.createElement('div'); d.innerHTML = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|li|div|h\d|pre|tr)>/gi, '\n'); d.querySelectorAll('svg').forEach(s => s.remove()); return d.textContent.replace(/\n{3,}/g, '\n\n').trim(); }
+async function copyText(txt) {
+  try { await navigator.clipboard.writeText(txt); return true; } catch (e) {
+    const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok; }
+}
+
+/* ======================= app state ======================= */
+const ST = {
+  subject: store.get('pet_subject', SUBJECTS[0] && SUBJECTS[0].id),
+  tab: 'test',
+  pref: store.get('pet_pref', {}),
+  sess: {},       // active sessions per `${subject}:${tab}`
+  results: {},    // results being displayed per key
+};
+if (!SUBJECTS.find(s => s.id === ST.subject)) ST.subject = SUBJECTS[0].id;
+const SUB = () => SUBJECTS.find(s => s.id === ST.subject);
+const key = (tab = ST.tab) => ST.subject + ':' + tab;
+const pref = (k, d) => (ST.pref[ST.subject + '.' + k] ?? d);
+const setPref = (k, v) => { ST.pref[ST.subject + '.' + k] = v; store.set('pet_pref', ST.pref); };
+window.addEventListener('beforeunload', e => { if (Object.values(ST.sess).some(s => s && !s.finished)) { e.preventDefault(); e.returnValue = ''; } });
+
+function renderHeader() {
+  $('#subjectPills').innerHTML = SUBJECTS.map(s => `<button class="pill ${s.id === ST.subject ? 'on' : ''}" data-s="${s.id}">${esc(s.name)}</button>`).join('');
+  $$('#subjectPills .pill').forEach(b => b.onclick = () => { ST.subject = b.dataset.s; ST.review = null; store.set('pet_subject', ST.subject); render(); });
+  const hasMat = Object.values(window.MATERIALS || {}).some(l => l && l.length);
+  if (!hasMat && ST.tab === 'materials') ST.tab = 'test';
+  renderAccount();
+  $('#tabs').innerHTML = TABS.filter(([id]) => hasMat || id !== 'materials').map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' && ST.subject === 'chem' ? 'Tables' : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
+  $$('#tabs .tab').forEach(b => b.onclick = () => { ST.tab = b.dataset.t; ST.review = null; render(); });
+  document.title = 'PoliTo Exam Trainer — ' + SUB().name;
+}
+function render() {
+  renderHeader(); clearInterval(ST.tick); document.onkeydown = null;
+  const main = $('#main');
+  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula })[ST.tab](main);
+  window.scrollTo(0, 0);
+}
+
+/* ======================= COMPUTER TEST ======================= */
+function generateFromLayout(sub, layout, diff) {
+  const used = new Set();
+  return layout.map(id => { const q = sub.engine.generate(id, levelFor(diff), used); if (q.thId != null) used.add(q.thId); return q; });
+}
+function viewTest(main) {
+  const sub = SUB(), k = key();
+  if (ST.sess[k] && !ST.sess[k].finished) return examView(main, ST.sess[k]);
+  if (ST.results[k]) return resultsView(main, ST.results[k], () => { delete ST.results[k]; render(); });
+  const modeId = pref('mode', sub.modes[0].id), diff = pref('diff', 'random'), timer = pref('timer', true);
+  const mode = sub.modes.find(x => x.id === modeId) || sub.modes[0];
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — computer test</h2>
+    <div class="rules small">${esc(sub.mc.rules)}</div>
+    ${sub.modes.length > 1 ? `<div class="field"><label>Test type</label><div class="modes">${sub.modes.map(md => `<button class="mode ${md.id === mode.id ? 'on' : ''}" data-m="${md.id}"><b>${esc(md.name)}</b><span class="small muted">${esc(md.desc)}</span></button>`).join('')}</div></div>` : ''}
+    <div class="field"><label>Difficulty</label>${seg('diff', DIFFS, diff, DIFFS.map(d => d === 'random' ? 'Random' : d))}
+      <div class="small muted" style="margin-top:6px">Random mixes levels like a real exam. 1 = basic, 6 = hardest.</div></div>
+    <div class="field"><label><input type="checkbox" id="timerOn" ${timer ? 'checked' : ''}> Countdown timer (${sub.mc.minutes} min, auto-submit at 0)</label></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary big" id="go">Generate test</button></div></div>`;
+  $$('.mode', main).forEach(b => b.onclick = () => { setPref('mode', b.dataset.m); render(); });
+  bindSeg(main, 'diff', v => setPref('diff', v));
+  $('#timerOn').onchange = e => setPref('timer', e.target.checked);
+  $('#go').onclick = () => {
+    const btn = $('#go'); btn.disabled = true; btn.textContent = 'Generating…';
+    setTimeout(() => {
+      let qs; try { qs = generateFromLayout(sub, mode.layout, pref('diff', 'random')); } catch (e) { btn.disabled = false; btn.textContent = 'Generate test'; toast('Generation error: ' + e.message); return; }
+      ST.sess[k] = { id: uid(), kind: 'test', subject: sub.id, mode: mode.name, diff: pref('diff', 'random'), questions: qs, answers: qs.map(() => null), flags: qs.map(() => false), cur: 0, start: Date.now(), limit: pref('timer', true) ? sub.mc.minutes * 60 : null, scoring: sub.mc };
+      render();
+    }, 20);
+  };
+}
+
+function examView(main, S) {
+  const n = S.questions.length;
+  const q = S.questions[S.cur], a = S.answers[S.cur];
+  const revealed = S.instant && a != null;
+  main.innerHTML = `<div class="exam">
+    <div class="card">
+      <div class="qhead"><div><b>Question ${S.cur + 1}</b> <span class="muted">of ${n}</span>${S.kind === 'practice' ? ` <span class="badge">${esc(q.topicName || '')}</span> <span class="badge bl">L${q.level}</span>` : ''}</div>
+        <button class="linkbtn small" id="flag">${S.flags[S.cur] ? '⚑ Flagged' : '⚐ Flag question'}</button></div>
+      <div class="qtext">${rich(q.q)}</div>
+      <div class="opts">${q.opts.map((o, i) => `<button class="opt ${a === i ? 'sel' : ''} ${revealed ? (i === q.ans ? 'right' : (a === i ? 'wrong' : '')) : ''}" data-i="${i}"><span class="lt">${LETTERS[i]}.</span><span class="body">${rich(o)}</span></button>`).join('')}</div>
+      ${!revealed && a != null ? '<div style="margin-top:8px"><button class="linkbtn small" id="clear">Clear my choice</button></div>' : ''}
+      ${revealed ? `<div class="sol"><b>${a === q.ans ? '✓ Correct.' : '✗ Not correct.'}</b> ${rich(q.sol)}</div>` : ''}
+      <div class="row" style="justify-content:space-between;margin-top:16px">
+        <button class="btn" id="prev" ${S.cur === 0 ? 'disabled' : ''}>← Previous</button>
+        ${S.cur < n - 1 ? '<button class="btn primary" id="next">Next →</button>' : '<button class="btn primary" id="fin2">Finish attempt</button>'}
+      </div>
+    </div>
+    <aside class="side card">
+      ${S.limit ? `<div class="timer" id="timer">${fmtTime(S.limit - (Date.now() - S.start) / 1000)}</div>` : `<div class="timer calm" id="timer">${fmtTime((Date.now() - S.start) / 1000)}</div>`}
+      <div class="small muted" style="margin-top:4px;text-align:center">${S.limit ? 'time left' : 'time elapsed'}</div>
+      <div class="navgrid">${S.questions.map((qq, i) => `<button class="navb ${S.answers[i] != null ? 'done' : ''} ${i === S.cur ? 'cur' : ''} ${S.flags[i] ? 'flag' : ''} ${S.instant && S.answers[i] != null ? (S.answers[i] === qq.ans ? 'ok' : 'ko') : ''}" data-n="${i}">${i + 1}</button>`).join('')}</div>
+      <div class="small muted">${S.answers.filter(x => x != null).length} of ${n} answered</div>
+      <button class="btn" style="width:100%;margin-top:10px" id="sheet">${SUB().id === 'chem' ? 'Tables (periodic table, E°, ΔH°f)' : 'Formula sheet'}</button>
+      <button class="btn primary" style="width:100%;margin-top:10px" id="fin">Finish attempt…</button>
+      <button class="btn danger" style="width:100%;margin-top:8px" id="abandon">Abandon</button>
+    </aside></div>`;
+  const go = i => { S.cur = i; render(); };
+  $$('.opt', main).forEach(b => b.onclick = () => { if (revealed) return; const i = Number(b.dataset.i); S.answers[S.cur] = S.answers[S.cur] === i && !S.instant ? null : i; render(); });
+  $$('.navb', main).forEach(b => b.onclick = () => go(Number(b.dataset.n)));
+  const cl = $('#clear'); if (cl) cl.onclick = () => { S.answers[S.cur] = null; render(); };
+  $('#flag').onclick = () => { S.flags[S.cur] = !S.flags[S.cur]; render(); };
+  const pv = $('#prev'); if (pv) pv.onclick = () => go(S.cur - 1);
+  const nx = $('#next'); if (nx) nx.onclick = () => go(S.cur + 1);
+  const finish = () => { const blank = S.answers.filter(x => x == null).length; if (blank && !confirm(`${blank} question(s) not answered. Finish anyway?`)) return; finishMC(S); };
+  $('#fin').onclick = finish; const f2 = $('#fin2'); if (f2) f2.onclick = finish;
+  $('#sheet').onclick = () => { const h = (window.FORMULAS || {})[S.subject]; openModal('<div class="formula">' + (h ? rich(typeof h === 'function' ? h() : h) : 'No formula sheet.') + '</div><div style="text-align:right;margin-top:10px"><button class="btn" onclick="this.closest(\'.modal\').remove()">Close</button></div>'); };
+  $('#abandon').onclick = () => { if (confirm('Abandon this attempt? It will not be saved.')) { delete ST.sess[key()]; render(); } };
+  ST.tick = setInterval(() => {
+    const el = $('#timer'); if (!el) return clearInterval(ST.tick);
+    const el2 = (Date.now() - S.start) / 1000;
+    if (S.limit) { const left = S.limit - el2; el.textContent = fmtTime(left); if (left <= 0) { clearInterval(ST.tick); toast('Time is up — test submitted.'); finishMC(S); } }
+    else el.textContent = fmtTime(el2);
+  }, 1000);
+  document.onkeydown = e => {
+    if (ST.tab !== 'test' && ST.tab !== 'practice') return; if (!$('.opts')) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight' && S.cur < n - 1) go(S.cur + 1); else if (e.key === 'ArrowLeft' && S.cur > 0) go(S.cur - 1);
+    else { const i = '12345'.indexOf(e.key); if (i >= 0 && i < q.opts.length && !revealed) { S.answers[S.cur] = i; render(); } }
+  };
+}
+function scoreMC(S) {
+  const sc = S.scoring; let right = 0, wrong = 0, blank = 0;
+  S.questions.forEach((q, i) => { const a = S.answers[i]; if (a == null) blank++; else if (a === q.ans) right++; else wrong++; });
+  if (S.kind === 'practice') return { right, wrong, blank, score: right, max: S.questions.length, passed: null };
+  const score = Math.round((right * sc.right + wrong * sc.wrong + blank * sc.blank) * 100) / 100;
+  return { right, wrong, blank, score, max: sc.max, passed: score >= sc.pass };
+}
+function finishMC(S) {
+  clearInterval(ST.tick); S.finished = true;
+  const r = scoreMC(S);
+  const entry = { id: S.id, subject: S.subject, kind: S.kind, mode: S.mode, diff: S.diff, date: new Date().toISOString(), dur: Math.round((Date.now() - S.start) / 1000), ...r,
+    items: S.questions.map((q, i) => ({ q: q.q, opts: q.opts, ans: q.ans, sol: q.sol, topic: q.topic, topicName: q.topicName, level: q.level, chosen: S.answers[i] })) };
+  history.add(entry);
+  const k = S.subject + ':' + (S.kind === 'practice' ? 'practice' : 'test');
+  delete ST.sess[k]; ST.results[k] = entry;
+  if (ST.subject === S.subject) render();
+}
+function resultsView(main, e, onNew, fromHistory) {
+  const sub = SUBJECTS.find(s => s.id === e.subject) || SUB();
+  const isPractice = e.kind === 'practice';
+  const verdict = isPractice ? '' : `<div class="verdict ${e.passed ? 'ok' : 'ko'}">${e.passed ? (sub.id === 'chem' ? 'PASSED — admitted to the written test' : 'PASSED') : 'NOT PASSED'}</div>`;
+  const pct = Math.round(100 * e.right / e.items.length);
+  main.innerHTML = `<div class="card">
+    <div class="row" style="justify-content:space-between"><h2>${esc(sub.name)} — ${esc(isPractice ? 'practice: ' + e.mode : e.mode)}</h2><span class="muted small">${fmtDate(e.date)} · ${diffLabel(e.diff)} · ${fmtTime(e.dur)}</span></div>
+    <div class="score" style="margin-top:10px"><div class="big">${isPractice ? `${e.right} / ${e.items.length}` : `${fmtNum(e.score)} / ${fmtNum(e.max)}`}</div>${verdict}
+      <div class="small"><span class="badge ok">${e.right} correct</span> <span class="badge ko">${e.wrong} wrong</span> <span class="badge bl">${e.blank} blank</span> <span class="muted">(${pct}%)</span>${!isPractice ? `<div class="muted" style="margin-top:4px">Pass mark: ${fmtNum(sub.mc.pass)} / ${fmtNum(sub.mc.max)}</div>` : ''}</div></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary" id="again">${fromHistory ? '← Back to history' : 'New ' + (isPractice ? 'practice' : 'test')}</button>
+      <button class="btn" id="onlyWrong">Show only mistakes</button><button class="btn" id="showAll">Show all</button></div></div>
+  <div id="items"></div>`;
+  const draw = onlyWrong => {
+    $('#items').innerHTML = e.items.map((q, i) => {
+      const st = q.chosen == null ? 'bl' : q.chosen === q.ans ? 'ok' : 'ko';
+      if (onlyWrong && st === 'ok') return '';
+      return `<div class="card"><div class="qhead"><div><b>Question ${i + 1}</b> <span class="badge ${st}">${st === 'ok' ? 'correct' : st === 'ko' ? 'wrong' : 'not answered'}</span></div><span class="small muted">${esc(q.topicName || '')} · L${q.level}</span></div>
+        <div class="qtext">${rich(q.q)}</div>
+        <div class="opts">${q.opts.map((o, j) => `<div class="opt ${j === q.ans ? 'right' : (j === q.chosen ? 'wrong' : '')}"><span class="lt">${LETTERS[j]}.</span><span class="body">${rich(o)}</span>${j === q.ans ? '<span class="small" style="color:var(--ok)">✓ correct</span>' : j === q.chosen ? '<span class="small" style="color:var(--bad)">your answer</span>' : ''}</div>`).join('')}</div>
+        <div class="sol"><b>Solution.</b> ${rich(q.sol)}</div></div>`;
+    }).join('') || '<div class="card">No mistakes — well done!</div>';
+  };
+  draw(false);
+  $('#again').onclick = onNew; $('#onlyWrong').onclick = () => draw(true); $('#showAll').onclick = () => draw(false);
+}
+
+/* ======================= PRACTICE ======================= */
+function viewPractice(main) {
+  const sub = SUB(), k = key();
+  if (ST.sess[k] && !ST.sess[k].finished) return examView(main, ST.sess[k]);
+  if (ST.results[k]) return resultsView(main, ST.results[k], () => { delete ST.results[k]; render(); });
+  const topic = pref('ptopic', 'mixed'), n = pref('pn', '10'), diff = pref('pdiff', 'random'), instant = pref('instant', true);
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — practice by topic</h2>
+    <p class="muted small" style="margin-top:0">No timer pressure. Pick a topic to drill, and see the solution right after each answer.</p>
+    <div class="field"><label>Topic</label><select id="ptopic"><option value="mixed">All topics (mixed)</option>${sub.engine.TOPICS.map(t => `<option value="${t.id}" ${t.id === topic ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Number of questions</label>${seg('pn', ['5', '10', '15', '20'], n)}</div>
+    <div class="field"><label>Difficulty</label>${seg('pdiff', DIFFS, diff, DIFFS.map(d => d === 'random' ? 'Random' : d))}</div>
+    <div class="field"><label><input type="checkbox" id="instant" ${instant ? 'checked' : ''}> Show the answer and solution right after each question</label></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary big" id="go">Start practice</button></div></div>`;
+  $('#ptopic').onchange = e => setPref('ptopic', e.target.value);
+  bindSeg(main, 'pn', v => setPref('pn', v)); bindSeg(main, 'pdiff', v => setPref('pdiff', v));
+  $('#instant').onchange = e => setPref('instant', e.target.checked);
+  $('#go').onclick = () => {
+    const t = pref('ptopic', 'mixed'), cnt = Number(pref('pn', '10')), d = pref('pdiff', 'random');
+    const ids = t === 'mixed' ? sub.engine.TOPICS.map(x => x.id) : [t];
+    const used = new Set(); const qs = [];
+    try { for (let i = 0; i < cnt; i++) { const id = ids[Math.floor(Math.random() * ids.length)]; const q = sub.engine.generate(id, levelFor(d), used); if (q.thId != null) used.add(q.thId); qs.push(q); } } catch (e) { toast('Generation error: ' + e.message); return; }
+    const tn = t === 'mixed' ? 'all topics' : (sub.engine.TOPICS.find(x => x.id === t) || {}).name;
+    ST.sess[k] = { id: uid(), kind: 'practice', subject: sub.id, mode: tn, diff: d, questions: qs, answers: qs.map(() => null), flags: qs.map(() => false), cur: 0, start: Date.now(), limit: null, instant: pref('instant', true), scoring: sub.mc };
+    render();
+  };
+}
+
+/* ======================= WRITTEN EXAM ======================= */
+function viewWritten(main) {
+  const sub = SUB(), k = key();
+  const W = ST.sess[k];
+  if (W) return writtenView(main, W);
+  const diff = pref('wdiff', 'random'), timer = pref('wtimer', true);
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — written exam</h2>
+    <div class="rules small">${esc(sub.written.rules)}</div>
+    <p class="small muted">Solve it on paper, then upload photos (or a PDF${sub.id === 'cs' ? ' / your .py file' : ''}) of your work. When you finish, the program shows the full solution next to your pages and you give yourself points part by part. Use <b>Copy for Claude</b> to get your photos graded in a Claude chat.</p>
+    <div class="field"><label>Difficulty</label>${seg('wdiff', DIFFS, diff, DIFFS.map(d => d === 'random' ? 'Random' : d))}</div>
+    <div class="field"><label><input type="checkbox" id="wtimer" ${timer ? 'checked' : ''}> Countdown timer (${sub.written.minutes} min)</label></div>
+    <div class="row" style="margin-top:14px"><button class="btn primary big" id="go">Generate written exam</button></div></div>`;
+  bindSeg(main, 'wdiff', v => setPref('wdiff', v));
+  $('#wtimer').onchange = e => setPref('wtimer', e.target.checked);
+  $('#go').onclick = () => {
+    let exam; try { exam = window.Written[sub.id](levelFor(pref('wdiff', 'random'))); } catch (e) { toast('Generation error: ' + e.message); console.error(e); return; }
+    ST.sess[k] = { id: uid(), kind: 'written', subject: sub.id, diff: pref('wdiff', 'random'), exam, files: [], grades: {}, start: Date.now(), limit: pref('wtimer', true) ? sub.written.minutes * 60 : null, finished: false };
+    render();
+  };
+}
+function partKey(ei, pi) { return ei + '.' + pi; }
+function writtenTotals(W) { let s = 0; for (const v of Object.values(W.grades)) s += Number(v) || 0; return Math.round(s * 100) / 100; }
+function writtenView(main, W, fromHistory) {
+  const sub = SUBJECTS.find(s => s.id === W.subject) || SUB(); const ex = W.exam;
+  const done = W.finished;
+  const total = writtenTotals(W);
+  main.innerHTML = `<div class="card">
+      <div class="row" style="justify-content:space-between"><h2>${esc(ex.title)}</h2>
+        ${!done ? (W.limit ? `<div class="timer" id="wt">${fmtTime(W.limit - (Date.now() - W.start) / 1000)}</div>` : `<div class="timer calm" id="wt">${fmtTime((Date.now() - W.start) / 1000)}</div>`) : `<span class="muted small">${fmtDate(W.date || new Date().toISOString())} · ${diffLabel(W.diff)}</span>`}</div>
+      <div class="small muted">${esc(sub.written.rules)}</div>
+      ${done ? `<div class="score" style="margin-top:12px"><div class="big" id="wtotal">${fmtNum(total)} / ${ex.max}</div><div class="verdict ${total >= ex.pass ? 'ok' : 'ko'}" id="wverdict">${total >= ex.pass ? 'PASSED' : 'NOT PASSED'}</div><div class="small muted">Self-assessed: enter your points for each part below. Pass mark ${ex.pass}/${ex.max}.</div></div>` : ''}
+    </div>
+    <div class="card">${ex.exercises.map((e, ei) => `<div class="ex"><h3>${esc(e.title)} <span class="badge">${e.points} pts</span></h3>
+      ${e.intro ? `<div class="pq">${rich(e.intro)}</div>` : ''}
+      ${e.parts.map((p, pi) => `<div class="part"><div class="pq"><b>(${LETTERS[pi]})</b> ${rich(p.q)} <span class="small muted">[${p.pts} pt${p.pts === 1 ? '' : 's'}]</span></div>
+        ${done ? `<div class="sol">${rich(p.sol)}</div><div class="grade"><label>Your points:</label><input type="number" min="0" max="${p.pts}" step="0.5" data-g="${partKey(ei, pi)}" value="${W.grades[partKey(ei, pi)] ?? ''}"> <span class="muted">/ ${p.pts}</span>
+          <button class="linkbtn small" data-full="${partKey(ei, pi)}" data-max="${p.pts}">full</button> <button class="linkbtn small" data-zero="${partKey(ei, pi)}">zero</button></div>` : ''}
+      </div>`).join('')}
+      ${done && e.extraSol ? `<div class="sol">${rich(e.extraSol)}</div>` : ''}</div>`).join('')}</div>
+    <div class="card"><h3>Your answers</h3>
+      <div class="drop" id="drop">Click or drop photos / PDF${sub.id === 'cs' ? ' / .py files' : ''} of your solution here</div>
+      <input type="file" id="file" multiple accept="image/*,application/pdf,.py,.txt" class="hidden">
+      <div class="thumbs" id="thumbs"></div></div>
+    <div class="card row">
+      ${!done ? `<button class="btn primary big" id="finish">Finish &amp; show solutions</button><button class="btn danger" id="discard">Discard</button>` :
+        `<button class="btn primary" id="claude">Copy for Claude (grading prompt)</button><button class="btn" id="back">${fromHistory ? '← Back to history' : 'New written exam'}</button>`}
+    </div>`;
+  drawThumbs(W);
+  const drop = $('#drop'), fi = $('#file');
+  drop.onclick = () => fi.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(W, e.dataTransfer.files); };
+  fi.onchange = () => { addFiles(W, fi.files); fi.value = ''; };
+  if (!done) {
+    $('#finish').onclick = () => { if (!confirm('Finish the exam and show the solutions?')) return; W.finished = true; W.date = new Date().toISOString(); W.dur = Math.round((Date.now() - W.start) / 1000); saveWritten(W, true); render(); };
+    $('#discard').onclick = () => { if (confirm('Discard this written exam? Nothing will be saved.')) { delete ST.sess[key()]; render(); } };
+    ST.tick = setInterval(() => { const el = $('#wt'); if (!el) return clearInterval(ST.tick); const t = (Date.now() - W.start) / 1000; if (W.limit) { el.textContent = fmtTime(W.limit - t); if (W.limit - t <= 0) { el.textContent = 'Time is up'; clearInterval(ST.tick); } } else el.textContent = fmtTime(t); }, 1000);
+  } else {
+    const upd = () => { const t = writtenTotals(W); $('#wtotal').textContent = `${fmtNum(t)} / ${ex.max}`; const v = $('#wverdict'); v.className = 'verdict ' + (t >= ex.pass ? 'ok' : 'ko'); v.textContent = t >= ex.pass ? 'PASSED' : 'NOT PASSED'; saveWritten(W, false); };
+    $$('[data-g]', main).forEach(inp => inp.oninput = () => { let v = inp.value === '' ? null : Math.max(0, Math.min(Number(inp.max), Number(inp.value))); if (v == null) delete W.grades[inp.dataset.g]; else W.grades[inp.dataset.g] = v; upd(); });
+    $$('[data-full]', main).forEach(b => b.onclick = () => { const inp = $(`[data-g="${b.dataset.full}"]`); inp.value = b.dataset.max; inp.oninput(); });
+    $$('[data-zero]', main).forEach(b => b.onclick = () => { const inp = $(`[data-g="${b.dataset.zero}"]`); inp.value = 0; inp.oninput(); });
+    $('#claude').onclick = async () => { const ok = await copyText(claudePrompt(W, sub)); toast(ok ? 'Copied! Paste it in a Claude chat and attach your photos.' : 'Copy failed — your browser blocked the clipboard.'); };
+    $('#back').onclick = () => { if (fromHistory) { ST.review = null; render(); } else { delete ST.sess[key()]; render(); } };
+  }
+}
+function claudePrompt(W, sub) {
+  const ex = W.exam; const lines = [];
+  lines.push(`I am a first-year student at Politecnico di Torino preparing the ${sub.name} written exam. Below is a practice exam (max ${ex.max} points, pass ${ex.pass}) with the official-style solution and the points for each part. I attached photos of my handwritten solution${sub.id === 'cs' ? ' / my code' : ''}.`);
+  lines.push('Please grade my work part by part as a strict PoliTo examiner: for each part give the points out of the maximum, point out every mistake, and explain what I should have written. Finish with my total score.');
+  lines.push('');
+  ex.exercises.forEach((e, ei) => {
+    lines.push(`=== ${e.title} (${e.points} points) ===`); if (e.intro) lines.push(htmlToText(e.intro));
+    e.parts.forEach((p, pi) => { lines.push(`(${LETTERS[pi]}) [${p.pts} pts] ${htmlToText(p.q)}`); lines.push(`   Official solution: ${htmlToText(p.sol)}`); });
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+async function addFiles(W, list) {
+  for (const f of Array.from(list)) {
+    let blob = f, type = f.type || (f.name.endsWith('.py') ? 'text/x-python' : 'application/octet-stream');
+    if (f.type.startsWith('image/')) { try { blob = await compressImage(f); type = blob.type || f.type; } catch (e) { blob = f; } }
+    W.files.push({ name: f.name, type, blob });
+  }
+  drawThumbs(W); if (W.finished) saveWritten(W, false);
+}
+async function compressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const maxD = 1800, s = Math.min(1, maxD / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const b = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85)); return b || file;
+  } finally { URL.revokeObjectURL(url); }
+}
+function drawThumbs(W) {
+  const box = $('#thumbs'); if (!box) return;
+  (W._urls || []).forEach(u => URL.revokeObjectURL(u)); W._urls = [];
+  box.innerHTML = W.files.map((f, i) => { const u = URL.createObjectURL(f.blob); W._urls.push(u);
+    const isImg = (f.type || '').startsWith('image/');
+    return `<div class="thumb">${isImg ? `<img src="${u}" data-i="${i}" alt="">` : `<a href="${u}" target="_blank" download="${esc(f.name)}"><div class="filechip">${esc((f.name.split('.').pop() || 'file').toUpperCase())}</div></a>`}<div class="nm" title="${esc(f.name)}">${esc(f.name)}</div><button class="x" data-del="${i}" title="Remove">×</button></div>`; }).join('') || '<span class="small muted">No files yet.</span>';
+  $$('img[data-i]', box).forEach(im => im.onclick = () => openModal(`<img src="${im.src}" alt="">`));
+  $$('[data-del]', box).forEach(b => b.onclick = () => { W.files.splice(Number(b.dataset.del), 1); drawThumbs(W); if (W.finished) saveWritten(W, false); });
+}
+function openModal(html) { const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = `<div class="box">${html}</div>`; m.onclick = e => { if (e.target === m) m.remove(); }; document.body.appendChild(m); return m; }
+function saveWritten(W, first) {
+  const total = writtenTotals(W);
+  const entry = { id: W.id, subject: W.subject, kind: 'written', mode: 'Written exam', diff: W.diff, date: W.date || new Date().toISOString(), dur: W.dur || 0, score: total, max: W.exam.max, passed: total >= W.exam.pass, graded: Object.keys(W.grades).length, exam: W.exam, grades: W.grades, nfiles: W.files.length };
+  if (first) history.add(entry); else history.update(entry);
+  IDB.put(W.id, W.files.map(f => ({ name: f.name, type: f.type, blob: f.blob }))).catch(() => toast('Could not store the files in this browser.'));
+}
+
+/* ======================= HISTORY ======================= */
+function viewHistory(main) {
+  if (ST.review) {
+    const e = ST.review;
+    if (e.kind === 'written') { const W = { id: e.id, subject: e.subject, diff: e.diff, exam: e.exam, grades: { ...(e.grades || {}) }, files: [], finished: true, date: e.date, dur: e.dur }; writtenView(main, W, true); IDB.get(e.id).then(fs => { if (fs && fs.length) { W.files = fs; drawThumbs(W); } }).catch(() => {}); return; }
+    return resultsView(main, e, () => { ST.review = null; render(); }, true);
+  }
+  const sub = SUB(); const filt = pref('hfilt', 'all');
+  const all = history.all().filter(x => x.subject === sub.id);
+  const list = all.filter(x => filt === 'all' || x.kind === filt);
+  const tests = all.filter(x => x.kind === 'test');
+  const avg = tests.length ? Math.round(100 * tests.reduce((s, x) => s + Math.max(0, x.score) / x.max, 0) / tests.length) : null;
+  const best = tests.length ? Math.max(...tests.map(x => x.score)) : null;
+  const passRate = tests.length ? Math.round(100 * tests.filter(x => x.passed).length / tests.length) : null;
+  const writtens = all.filter(x => x.kind === 'written' && x.graded);
+  const topic = {};
+  all.filter(x => x.items).forEach(x => x.items.forEach(it => { const t = it.topicName || it.topic; topic[t] = topic[t] || [0, 0]; topic[t][1]++; if (it.chosen === it.ans) topic[t][0]++; }));
+  const trows = Object.entries(topic).map(([t, [c, n]]) => [t, c, n, c / n]).sort((a, b) => a[3] - b[3]);
+  const cloudHint = window.Cloud && Cloud.enabled && !Cloud.user ? `<div class="rules small">You are not signed in: this history is saved only in this browser. <button class="linkbtn" id="hintSignIn">Sign in or create an account</button> to keep it in your account and see it on any device.</div>` : (window.Cloud && Cloud.user ? `<div class="small muted" style="margin-bottom:8px">Saved in your account (${esc(Cloud.user.email)}). Uploaded photos stay on the device where you added them.</div>` : '');
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — history</h2>${cloudHint}
+      <div class="stats"><div class="stat"><span class="small muted">Computer tests</span><b>${tests.length}</b></div>
+        <div class="stat"><span class="small muted">Average score</span><b>${avg == null ? '–' : avg + '%'}</b></div>
+        <div class="stat"><span class="small muted">Best score</span><b>${best == null ? '–' : fmtNum(best) + ' / ' + sub.mc.max}</b></div>
+        <div class="stat"><span class="small muted">Tests passed</span><b>${passRate == null ? '–' : passRate + '%'}</b></div>
+        <div class="stat"><span class="small muted">Written exams graded</span><b>${writtens.length}</b></div></div>
+      ${trows.length ? `<h3>Accuracy by topic <span class="small muted">(weakest first, from tests and practice)</span></h3><div class="bars">${trows.map(([t, c, n, p]) => `<div class="barrow"><span>${esc(t)}</span><div class="track"><div class="fill" style="width:${Math.round(p * 100)}%;background:${p < .5 ? 'var(--bad)' : p < .75 ? 'var(--warn)' : 'var(--ok)'}"></div></div><span class="small">${c}/${n}</span></div>`).join('')}</div>` : ''}
+    </div>
+    <div class="card"><div class="row" style="justify-content:space-between"><div>${seg('hfilt', ['all', 'test', 'practice', 'written'], filt, ['All', 'Computer tests', 'Practice', 'Written'])}</div>
+      ${all.length ? '<button class="btn danger" id="clearAll">Delete all for this subject</button>' : ''}</div>
+      <div class="tablewrap" style="margin-top:12px">${list.length ? `<table><thead><tr><th>Date</th><th>Type</th><th>Difficulty</th><th>Score</th><th>Result</th><th></th></tr></thead><tbody>
+      ${list.map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.kind === 'written' ? 'Written exam' : x.kind === 'practice' ? 'Practice · ' + x.mode : x.mode)}</td><td>${diffLabel(x.diff)}</td>
+        <td>${x.kind === 'practice' ? `${x.right}/${x.items.length}` : x.kind === 'written' && !x.graded ? '<span class="muted">not graded</span>' : `${fmtNum(x.score)} / ${fmtNum(x.max)}`}</td>
+        <td>${x.passed == null ? '' : x.kind === 'written' && !x.graded ? '' : `<span class="badge ${x.passed ? 'ok' : 'ko'}">${x.passed ? 'passed' : 'not passed'}</span>`}</td>
+        <td style="white-space:nowrap"><button class="btn" data-open="${x.id}">Review</button> <button class="btn danger" data-del="${x.id}" title="Delete">×</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nothing here yet. Take a test and it will appear here automatically.</p>'}</div></div>`;
+  bindSeg(main, 'hfilt', v => { setPref('hfilt', v); render(); });
+  const hs = $('#hintSignIn'); if (hs) hs.onclick = () => openAuth('signin');
+  $$('[data-open]', main).forEach(b => b.onclick = () => { ST.review = history.all().find(x => x.id === b.dataset.open); render(); });
+  $$('[data-del]', main).forEach(b => b.onclick = () => { if (confirm('Delete this entry?')) { history.remove(b.dataset.del); render(); } });
+  const ca = $('#clearAll'); if (ca) ca.onclick = () => { if (confirm(`Delete ALL ${sub.name} history? This cannot be undone.`)) { all.forEach(x => history.remove(x.id)); render(); } };
+}
+
+/* ======================= MATERIALS & FORMULA SHEETS ======================= */
+function viewMaterials(main) {
+  const sub = SUB(); const M = (window.MATERIALS || {})[sub.id] || [];
+  const groups = {}; M.forEach(x => { (groups[x.group] = groups[x.group] || []).push(x); });
+  main.innerHTML = `<div class="card"><h2>${esc(sub.name)} — materials</h2><p class="small muted">Files stored in the program folder. They open in a new browser tab.</p>
+    ${Object.keys(groups).length ? Object.entries(groups).map(([g, xs]) => `<h3 style="margin-top:14px">${esc(g)}</h3><ul>${xs.map(x => `<li><a href="${encodeURI(x.file)}" target="_blank">${esc(x.title)}</a></li>`).join('')}</ul>`).join('') : '<p class="muted">No materials for this subject yet.</p>'}</div>`;
+}
+function viewFormula(main) {
+  const sub = SUB(); const html = (window.FORMULAS || {})[sub.id];
+  main.innerHTML = `<div class="card formula">${html ? rich(typeof html === 'function' ? html() : html) : '<p class="muted">No formula sheet for this subject.</p>'}</div>`;
+  const tb = $$('.tab')[5]; if (tb) tb.textContent = sub.id === 'chem' ? 'Tables' : 'Formula sheet';
+}
+
+/* ======================= ACCOUNTS ======================= */
+function renderAccount() {
+  const box = $('#account'); if (!box) return;
+  const C = window.Cloud;
+  if (!C || !C.enabled) { box.innerHTML = ''; return; }
+  if (C.state !== 'ready') { box.innerHTML = '<span class="small muted">Connecting…</span>'; return; }
+  if (!C.user) { box.innerHTML = '<button class="btn primary" id="btnSignIn">Sign in</button>'; $('#btnSignIn').onclick = () => openAuth('signin'); return; }
+  box.innerHTML = `<span class="small acct-mail" title="${esc(C.user.email)}">${esc(C.user.email)}</span><button class="btn" id="btnSignOut">Sign out</button>`;
+  $('#btnSignOut').onclick = () => { if (Object.values(ST.sess).some(s => s && !s.finished) && !confirm('A test is in progress. Sign out anyway?')) return; C.signOut(); };
+}
+function openAuth(mode) {
+  const m = openModal(''); const box = $('.box', m); box.style.maxWidth = '420px';
+  const draw = () => {
+    const up = mode === 'signup', reset = mode === 'reset';
+    box.innerHTML = `<h2>${up ? 'Create an account' : reset ? 'Reset your password' : 'Sign in'}</h2>
+      <p class="small muted" style="margin-top:0">${up ? 'Your tests and scores will be saved in your account, on any device.' : reset ? 'We will email you a link to choose a new password.' : 'Welcome back.'}</p>
+      <form id="authForm" novalidate>
+        <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" required class="inp"></div>
+        ${reset ? '' : `<div class="field"><label for="authPass">Password${up ? ' (at least 6 characters)' : ''}</label><input id="authPass" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required class="inp"></div>`}
+        ${up ? '<div class="field"><label for="authPass2">Repeat password</label><input id="authPass2" type="password" autocomplete="new-password" required class="inp"></div>' : ''}
+        <div id="authErr" class="small" style="color:var(--bad);min-height:20px"></div>
+        <button class="btn primary big" style="width:100%" id="authGo" type="submit">${up ? 'Create account' : reset ? 'Send reset link' : 'Sign in'}</button>
+      </form>
+      <div class="small" style="margin-top:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        ${up ? '<button class="linkbtn" data-m="signin">I already have an account</button>' : '<button class="linkbtn" data-m="signup">Create a new account</button>'}
+        ${mode === 'signin' ? '<button class="linkbtn" data-m="reset">Forgot password?</button>' : (reset ? '<button class="linkbtn" data-m="signin">Back to sign in</button>' : '')}
+      </div>`;
+    $$('[data-m]', box).forEach(b => b.onclick = () => { mode = b.dataset.m; draw(); });
+    const em = $('#authEmail', box); em.focus();
+    $('#authForm', box).onsubmit = async ev => {
+      ev.preventDefault(); const err = $('#authErr', box), go = $('#authGo', box);
+      const email = em.value.trim(), pass = reset ? '' : $('#authPass', box).value;
+      if (!email) { err.textContent = 'Enter your email.'; return; }
+      if (up && pass !== $('#authPass2', box).value) { err.textContent = 'The two passwords are different.'; return; }
+      go.disabled = true; err.textContent = '';
+      try {
+        if (up) { await Cloud.signUp(email, pass); m.remove(); toast('Account created. You are signed in.'); }
+        else if (reset) { await Cloud.resetPassword(email); err.style.color = 'var(--ok)'; err.textContent = 'Email sent. Check your inbox (and spam folder).'; }
+        else { await Cloud.signIn(email, pass); m.remove(); toast('Signed in.'); }
+      } catch (e) { err.style.color = 'var(--bad)'; err.textContent = Cloud.errorText(e); }
+      go.disabled = false;
+    };
+  };
+  draw();
+}
+function offerImport(u) {
+  const local = store.get(HKEY, []); const flag = 'pet_imported_' + u.uid;
+  if (!local.length || store.get(flag, false)) return;
+  const have = new Set((history.cloud || []).map(x => x.id)); const todo = local.filter(x => !have.has(x.id));
+  if (!todo.length) { store.set(flag, true); return; }
+  const m = openModal(`<h2>Add your saved tests to the account?</h2><p>This browser has <b>${todo.length}</b> test(s) saved from before you signed in. Add them to your account so you can see them everywhere?</p>
+    <div class="row" style="margin-top:14px"><button class="btn primary" id="impYes">Add them</button><button class="btn" id="impNo">Not now</button></div>`);
+  $('#impYes', m).onclick = () => { todo.forEach(e => { history.cloud.push(e); history._push(e, true); }); history.cloud.sort((a, b) => (a.date < b.date ? 1 : -1)); store.set(flag, true); m.remove(); toast(`${todo.length} test(s) added to your account.`); render(); };
+  $('#impNo', m).onclick = () => { store.set(flag, true); m.remove(); };
+}
+if (window.Cloud) Cloud.onChange(async u => {
+  if (u) {
+    try { history.cloud = await Cloud.loadHistory(); } catch (e) { history.cloud = []; toast('Could not load your history: ' + Cloud.errorText(e)); }
+    offerImport(u);
+  } else history.cloud = null;
+  ST.review = null; render();
+});
+
+window.addEventListener('keydown', e => { if (e.key === 'Escape') $$('.modal').forEach(m => m.remove()); });
+ST.review = null;
+render();
+// self-test hook used only for automated screenshots: #demo=<view>,<subject>
+const demo = (location.hash.match(/^#demo=(\w+)(?:,(\w+))?(?:,(\d+))?/) || []);
+if (demo[1]) {
+  if (demo[2]) ST.subject = demo[2];
+  const sub = SUB(); const k = (t) => ST.subject + ':' + t;
+  if (demo[1] === 'test' || demo[1] === 'results') {
+    ST.tab = 'test'; const mode = sub.modes[Number(demo[3] || 0)] || sub.modes[0];
+    const qs = generateFromLayout(sub, mode.layout, 'random');
+    const S = ST.sess[k('test')] = { id: uid(), kind: 'test', subject: sub.id, mode: mode.name, diff: 'random', questions: qs, answers: qs.map(() => null), flags: qs.map(() => false), cur: 3, start: Date.now() - 400000, limit: sub.mc.minutes * 60, scoring: sub.mc };
+    if (demo[1] === 'results') { S.answers = qs.map(q => (Math.random() < 0.6 ? q.ans : Math.floor(Math.random() * q.opts.length))); S.answers[2] = null; finishMC(S); } else { S.answers[0] = 1; S.answers[1] = 0; S.flags[2] = true; }
+  } else if (demo[1] === 'written') {
+    ST.tab = 'written'; const ex = window.Written[sub.id](Number(demo[3] || 3));
+    ST.sess[k('written')] = { id: uid(), kind: 'written', subject: sub.id, diff: '3', exam: ex, files: [], grades: { '0.0': 2, '0.1': 1.5 }, start: Date.now(), limit: null, finished: true, date: new Date().toISOString() };
+  } else if (demo[1] === 'writtenq') {
+    ST.tab = 'written'; const ex = window.Written[sub.id](Number(demo[3] || 3));
+    ST.sess[k('written')] = { id: uid(), kind: 'written', subject: sub.id, diff: '3', exam: ex, files: [], grades: {}, start: Date.now(), limit: sub.written.minutes * 60, finished: false };
+  } else ST.tab = demo[1];
+  render();
+}
+})();
