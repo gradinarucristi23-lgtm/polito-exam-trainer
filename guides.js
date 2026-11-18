@@ -40,12 +40,13 @@ const chem1 = String.raw`
 <li>Families: 1 alkali metals (ns<sup>1</sup>, +1), 2 alkaline-earth (ns<sup>2</sup>, +2), 15 pnictogens, 16 chalcogens, 17 halogens (ns<sup>2</sup>np<sup>5</sup>, −1), 18 noble gases (full shell). Metals left, non-metals right (upper), metalloids on the staircase (B, Si, Ge, As, Sb, Te).</li>
 <li><b>Effective nuclear charge</b> \(Z_\text{eff}=Z-S\) grows along a period → explains the trends.</li>
 </ul>
-<table><tr><th>Property</th><th>Along a period →</th><th>Down a group ↓</th></tr>
-<tr><td>Atomic radius</td><td>decreases</td><td>increases</td></tr>
-<tr><td>Ionization energy</td><td>increases (dips: B &lt; Be, O &lt; N)</td><td>decreases</td></tr>
-<tr><td>Electron affinity (energy released)</td><td>generally more negative</td><td>generally less negative</td></tr>
-<tr><td>Electronegativity (Pauling)</td><td>increases (F = 4.0 highest)</td><td>decreases</td></tr>
-<tr><td>Metallic character</td><td>decreases</td><td>increases</td></tr></table>
+<table><tr><th>Property</th><th>Along a period →</th><th>Down a group ↓</th><th>Highest</th></tr>
+<tr><td>Atomic radius</td><td>decreases</td><td>increases</td><td><b>Cs</b> (bottom left; Fr is radioactive)</td></tr>
+<tr><td>Ionization energy</td><td>increases (dips: B &lt; Be, O &lt; N)</td><td>decreases</td><td><b>He</b> (top right)</td></tr>
+<tr><td>Electron affinity (energy released)</td><td>generally more negative</td><td>generally less negative</td><td><b>Cl</b> (−349 kJ/mol; exception: not F)</td></tr>
+<tr><td>Electronegativity (Pauling)</td><td>increases</td><td>decreases</td><td><b>F</b> (4.0, top right)</td></tr>
+<tr><td>Metallic character</td><td>decreases</td><td>increases</td><td><b>Cs</b> (bottom left)</td></tr></table>
+<p class="small"><b>Trick:</b> each property grows toward the corner where its highest element sits: radius and metallic character toward the bottom left (Cs), the others toward the top right (He, F).</p>
 <p class="small">Cation smaller than its atom, anion larger. Successive ionization energies jump when a noble-gas core is broken (Mg: IE<sub>3</sub> ≫ IE<sub>2</sub>).</p>
 
 <h3 id="g-bond">4. The chemical bond</h3>
