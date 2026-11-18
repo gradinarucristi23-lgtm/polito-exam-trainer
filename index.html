@@ -16,7 +16,7 @@
 <script src="katex/katex.min.js?v=80102fec"></script>
 <script src="katex/contrib/mhchem.min.js?v=b6038d83"></script>
 <script src="engine.js?v=2396278f"></script>
-<script src="chem.js?v=d83c8abd"></script>
+<script src="chem.js?v=adf20ef0"></script>
 <script src="cs.js?v=858c150e"></script>
 <script src="written.js?v=9f275707"></script>
 <script src="formulas.js?v=eb78cbf4"></script>
@@ -95,7 +95,7 @@ select, input[type=number] { border: 1px solid var(--line); background: var(--ca
 .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
 .opt.right { border-color: var(--ok); background: var(--ok-soft); }
 .opt.wrong { border-color: var(--bad); background: var(--bad-soft); }
-.opt .body { overflow-x: auto; flex: 1; }
+.opt .body { overflow-x: auto; overflow-y: hidden; padding: 3px 0; flex: 1; }
 .linkbtn { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; }
 .sol { margin-top: 12px; background: var(--warn-soft); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
 .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }

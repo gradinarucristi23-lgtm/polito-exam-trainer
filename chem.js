@@ -178,9 +178,21 @@ function qnumbers(L) {
     if (t === 2) { const l = rnd.int(0, n - 1); return [n, l, l + 1, '-\\frac12']; }
     if (t === 3) { const l = rnd.int(0, n - 1); return [n, l, 0, rnd.pick(['0', '+1', '-1'])]; }
     return [0, 0, 0, '+\\frac12']; };
-  const st = s => opt(m(`(n,\\ell,m_\\ell,m_s)=(${s.join(',')})`), null, s.join('|'));
+  const sets = new Map();
+  const st = s => { const o = opt(m(`(n,\\ell,m_\\ell,m_s)=(${s.join(',')})`), null, s.join('|')); sets.set(o.h, s); return o; };
+  // Why one set is (not) allowed, checking the rules in order.
+  const why = ([n, l, ml, ms]) => {
+    if (n < 1) return `not allowed: ${m('n=0')}, but ${m(r`n\ge 1`)}`;
+    if (l > n - 1) return `not allowed: ${m(r`\ell=${l}`)}, but with ${m(`n=${n}`)} ${m(r`\ell`)} can be at most ${m(n - 1)}`;
+    if (Math.abs(ml) > l) return `not allowed: ${m(r`m_\ell=${ml}`)}, but with ${m(r`\ell=${l}`)} ${m(r`m_\ell`)} can only be ${m(Array.from({ length: 2 * l + 1 }, (_, i) => i - l).join(',\\,'))}`;
+    if (!/frac12/.test(ms)) return `not allowed: ${m(`m_s=${ms}`)}, but ${m(r`m_s`)} is only ${m(r`+\frac12`)} or ${m(r`-\frac12`)}`;
+    return '<b>allowed</b>: every rule is satisfied';
+  };
   const right = st(not ? invalid() : valid()); const W = []; for (let i = 0; i < 12; i++) W.push(st(not ? valid() : invalid()));
-  return mk5('qnumbers', L, `Which set of quantum numbers is <b>${not ? 'not' : ''} allowed</b>${not ? '' : ''} for an electron in an atom?`.replace('<b> allowed</b>', '<b>allowed</b>'), right, W, `Rules: ${m(r`n\ge 1`)}, ${m(r`0\le\ell\le n-1`)}, ${m(r`|m_\ell|\le\ell`)}, ${m(r`m_s=\pm\frac12`)}.`);
+  const res = mk5('qnumbers', L, `Which set of quantum numbers is <b>${not ? 'not' : ''} allowed</b>${not ? '' : ''} for an electron in an atom?`.replace('<b> allowed</b>', '<b>allowed</b>'), right, W, '');
+  res.sol = `Check the rules in this order: ${m(r`n\ge 1`)}; ${m(r`0\le\ell\le n-1`)}; ${m(r`-\ell\le m_\ell\le+\ell`)}; ${m(r`m_s=\pm\frac12`)}.<ul>` +
+    res.opts.map((h, i) => `<li>(${'abcde'[i]}) ${why(sets.get(h))}</li>`).join('') + '</ul>';
+  return res;
 }
 function cfgVariants(Z, q) {
   const c = config(Z, q), out = [];
