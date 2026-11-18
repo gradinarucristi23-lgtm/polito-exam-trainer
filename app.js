@@ -29,7 +29,8 @@ if (window.CS) SUBJECTS.push({
   modes: window.CS.MODES,
   written: window.CS.WRITTEN,
 });
-const TABS = [['test', 'Computer test'], ['written', 'Written exam'], ['practice', 'Practice'], ['history', 'History'], ['materials', 'Materials'], ['formula', 'Formulas'], ['tables', 'Tables']];
+const TABS = [['test', 'Computer test'], ['written', 'Written exam'], ['practice', 'Practice'], ['history', 'History'], ['materials', 'Materials'], ['formula', 'Formulas'], ['tables', 'Tables'], ['guide', 'Guide']];
+const guideOf = id => (window.GUIDES || {})[id];
 const FORMULA_TAB = { cs: 'Cheat sheet' };   // tab name per subject (default 'Formulas')
 const hasTables = id => !!(window.TABLES && window.TABLES[id]);
 const DIFFS = ['random', '1', '2', '3', '4', '5', '6'];
@@ -130,8 +131,9 @@ function renderHeader() {
   if (ST.tab === 'tables' && !hasTables(ST.subject)) ST.tab = 'formula';
   const noTest = SUB().hasTest === false;
   if (ST.tab === 'test' && noTest) ST.tab = 'written';
-  const tabs = TABS.filter(([id]) => (hasMat || id !== 'materials') && (id !== 'tables' || hasTables(ST.subject)) && (id !== 'test' || !noTest)).concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
-  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' ? (FORMULA_TAB[ST.subject] || nm) : id === 'written' ? (SUB().writtenTab || nm) : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
+  if (ST.tab === 'guide' && !guideOf(ST.subject)) ST.tab = 'formula';
+  const tabs = TABS.filter(([id]) => (hasMat || id !== 'materials') && (id !== 'tables' || hasTables(ST.subject)) && (id !== 'test' || !noTest) && (id !== 'guide' || !!guideOf(ST.subject))).concat(admin ? [['admin', 'Admin' + (ST.pendingCount ? ` (${ST.pendingCount})` : '')]] : []);
+  $('#tabs').innerHTML = tabs.map(([id, nm]) => `<button class="tab ${id === ST.tab ? 'on' : ''}" data-t="${id}">${id === 'formula' ? (FORMULA_TAB[ST.subject] || nm) : id === 'written' ? (SUB().writtenTab || nm) : id === 'guide' ? guideOf(ST.subject).tab : nm}${ST.sess[ST.subject + ':' + id] && !ST.sess[ST.subject + ':' + id].finished ? ' •' : ''}</button>`).join('');
   $$('#tabs .tab').forEach(b => b.onclick = () => { ST.tab = b.dataset.t; ST.review = null; render(); });
   document.title = 'PoliTo Exam Trainer — ' + SUB().name;
 }
@@ -140,7 +142,7 @@ function render() {
   if (gateView()) return;
   renderHeader();
   const main = $('#main');
-  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, tables: viewTables, admin: viewAdmin })[ST.tab](main);
+  ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, tables: viewTables, guide: viewGuide, admin: viewAdmin })[ST.tab](main);
   window.scrollTo(0, 0);
 }
 
@@ -644,6 +646,12 @@ function viewFormula(main) {
   const h = sheetHtml((window.FORMULAS || {})[SUB().id]);
   main.innerHTML = `<div class="card formula">${h || '<p class="muted">No formula sheet for this subject.</p>'}</div>`;
   bindJumps(main);
+}
+function viewGuide(main) {
+  const g = guideOf(SUB().id);
+  main.innerHTML = `<div class="card formula guide"><div class="row noprint" style="justify-content:flex-end"><button class="btn primary" id="gPrint">Print / save as PDF</button></div>${rich(g.html)}</div>`;
+  bindJumps(main);
+  $('#gPrint').onclick = () => window.print();
 }
 function viewTables(main) {
   main.innerHTML = `<div class="card formula">${sheetHtml((window.TABLES || {})[SUB().id]) || '<p class="muted">No tables for this subject.</p>'}</div>`;

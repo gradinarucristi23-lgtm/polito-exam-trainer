@@ -373,26 +373,51 @@ function csProg(t, title, points, parts, note) {
   return { title, points, parts, intro: (note ? `<div class="small" style="margin-bottom:8px">${note}</div>` : '') + `<b>${esc(t.title)}.</b> ` + t.text + '<div class="small" style="margin-top:8px"><b>Example.</b> ' + t.example + '</div>',
     extraSol: '<b>Model solution</b> (one of many correct ones):<pre class="code">' + esc(t.code) + '</pre>' };
 }
-const csSmall = () => [
-  { q: 'The program runs and reads the input correctly.', pts: 1, sol: 'No syntax errors, no crash on the example; values converted to the right types.' },
-  { q: 'Correct results, including edge cases.', pts: 1.5, sol: 'Core logic correct for the example and for edge cases (empty input, ties, missing values).' },
-  { q: 'Output format and clear code.', pts: 0.5, sol: 'Output exactly as requested; meaningful names, no duplicated code.' }];
+// Midterm question 4 (announcement): complete a program with missing parts, correct errors, or write a short snippet.
+function csQ4(L) {
+  const t = csTask(Math.min(L, 3)), lines = t.code.split('\n'), pre = c => '<pre class="code">' + esc(c) + '</pre>';
+  const kind = rnd.pick(['complete', 'fix', 'snippet']);
+  const parts = [{ q: 'Correct and complete answer (it would run and give the right output).', pts: 2, sol: 'Compare with the model solution below; other correct versions are fine.' },
+    { q: 'Clean Python: right indentation, meaningful names, no useless code.', pts: 1, sol: 'Readable code as in the model solution.' }];
+  if (kind === 'complete') {
+    const cand = lines.map((l, i) => i).filter(i => /\S/.test(lines[i]) && !/^\s*(def |main\(\)|#)/.test(lines[i]) && lines[i].trim().length > 8);
+    const gaps = rnd.shuffle(cand).slice(0, 3).sort((x, y) => x - y);
+    const shown = lines.map((l, i) => (gaps.includes(i) ? l.match(/^\s*/)[0] + '# ......... (' + (gaps.indexOf(i) + 1) + ')' : l)).join('\n');
+    return { title: 'Question 4 — Python: complete the program (bonus)', points: 3, bonus: true, parts,
+      intro: `<b>${esc(t.title)}.</b> ${t.text}<div style="margin-top:8px">The program below solves it, but ${gaps.length} lines are missing. Write the missing lines (1)–(${gaps.length}).</div>${pre(shown)}`,
+      extraSol: '<b>Missing lines:</b><pre class="code">' + esc(gaps.map((g, k) => `(${k + 1}) ${lines[g].trim()}`).join('\n')) + '</pre><b>Full program:</b>' + pre(t.code) };
+  }
+  if (kind === 'fix') {
+    const bugs = [], L2 = lines.slice();
+    const colon = rnd.shuffle(L2.map((l, i) => i).filter(i => /^\s*(if|for|while|elif)\b.*:\s*$/.test(L2[i])))[0];
+    if (colon != null) { L2[colon] = L2[colon].replace(/:\s*$/, ''); bugs.push(`line ${colon + 1}: missing <code>:</code> at the end of the <code>${L2[colon].trim().split(' ')[0]}</code> line`); }
+    const eq = L2.findIndex((l, i) => i !== colon && /^\s*(if|elif|while)\b.*[^=!<>]==[^=]/.test(l));
+    if (eq >= 0) { L2[eq] = L2[eq].replace(/([^=!<>])==([^=])/, '$1=$2'); bugs.push(`line ${eq + 1}: <code>=</code> (assignment) instead of <code>==</code> (comparison)`); }
+    const pr = L2.findIndex((l, i) => i !== colon && i !== eq && /\bprint\(/.test(l));
+    if (pr >= 0 && bugs.length < 3) { L2[pr] = L2[pr].replace('print(', 'pritn('); bugs.push(`line ${pr + 1}: <code>pritn</code> should be <code>print</code> (NameError)`); }
+    const numbered = L2.map((l, i) => String(i + 1).padStart(2) + '  ' + l).join('\n');
+    return { title: 'Question 4 — Python: correct the errors (bonus)', points: 3, bonus: true, parts,
+      intro: `<b>${esc(t.title)}.</b> ${t.text}<div style="margin-top:8px">This program should solve it but contains ${bugs.length} errors. Find them (give the line number) and write the corrected lines.</div>${pre(numbered)}`,
+      extraSol: '<b>Errors:</b><ul>' + bugs.map(x => '<li>' + x + '</li>').join('') + '</ul><b>Correct program:</b>' + pre(t.code) };
+  }
+  return { title: 'Question 4 — Python: write a short program (bonus)', points: 3, bonus: true, parts,
+    intro: `<b>${esc(t.title)}.</b> ${t.text}<div class="small" style="margin-top:8px"><b>Example.</b> ${t.example}</div>`,
+    extraSol: '<b>Model solution</b> (one of many correct ones):' + pre(t.code) };
+}
 function writtenCS(L, mode) {
   if (mode === 'midterm') {
-    const t1 = csTask(Math.min(L, 3)), t2 = csTask(Math.min(L + 1, 4), t1);
     return { title: 'Computer Sciences — midterm (practice)', max: 6, pass: 3,
-      passText: 'VALID — can replace the theory part', failText: 'BELOW 3/6 — would not pass the theory part',
+      passText: 'VALID — can replace the theory part', failText: 'BELOW 3/6 — would not replace the theory part',
       exercises: [
-        { title: 'Theory questions', points: 3, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”).', parts: csTheory(L, 2, 1.5) },
-        csProg(t1, 'Python exercise', 3, csSmall()),
-        { ...csProg(t2, 'Bonus exercise (optional)', 3, csSmall(), 'Extra exercise: 0–3 bonus points added to your exam score. It does not count in the 6 points above.'), bonus: true },
+        { title: 'Questions 1–3 — theory', points: 6, intro: 'Same kind as the theory questions of the final exam. Answer in English, briefly and precisely: words make a difference (“are” is not “may be”).', parts: csTheory(L, 3, 2) },
+        csQ4(L),
       ] };
   }
   const t = csTask(L);
   return { title: 'Computer Sciences — exam (practice)', max: 32, pass: 18,
     gate: { ex: 0, min: 3, why: 'Theory below 3/6: at the real exam the programming part would not be corrected.' },
     exercises: [
-      { title: 'Theory — short questions', points: 6, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”). You need at least 3 of these 6 points, otherwise the programming part is not corrected.', parts: csTheory(L, 2, 3) },
+      { title: 'Theory — short questions', points: 6, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”). You need at least 3 of these 6 points, otherwise the programming part is not corrected.', parts: csTheory(L, 3, 2) },
       csProg(t, 'Programming', 26, [
         { q: 'Input reading and data structures (files / input, lists, dictionaries).', pts: 7, sol: 'Data read correctly (types converted, empty or malformed lines handled), appropriate structures chosen.' },
         { q: 'Main algorithm (correct results in all cases).', pts: 11, sol: 'Correct logic for the core task, including edge cases (empty input, ties, missing keys).' },

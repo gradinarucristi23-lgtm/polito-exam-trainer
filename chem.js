@@ -689,12 +689,13 @@ function generate(topicId, level, used) {
   for (let i = 0; i < 80; i++) { try { const q = t.gen(level, used); q.topicName = t.name; return q; } catch (e) { last = e; } }
   throw last;
 }
-const MID1 = ['atom', 'quantum', 'qnumbers', 'config', 'config', 'periodic', 'nomenclature', 'balancing', 'mole', 'mole', 'bonding', 'vsepr', 'mo', 'concepts1', 'concepts1'];
+// Topics announced by Prof. Kriegel for midterm 1: atom, chemical bond, inorganic nomenclature, stoichiometry, gases.
+const MID1 = ['atom', 'quantum', 'qnumbers', 'config', 'periodic', 'nomenclature', 'nomenclature', 'balancing', 'mole', 'mole', 'bonding', 'vsepr', 'gases', 'gases', 'concepts1'];
 const MID2 = ['gases', 'gases', 'liquids', 'solutions', 'solutions', 'solutions', 'thermo', 'thermo', 'equilibrium', 'acidbase', 'acidbase', 'electrochem', 'kinetics', 'concepts2', 'concepts2'];
 const FULL = () => ['atom', 'qnumbers', 'config', 'periodic', 'nomenclature', 'balancing', 'mole', 'vsepr', 'mo', 'gases', 'solutions', 'thermo', 'acidbase', 'concepts1', 'concepts2'];
 const MODES = [
   { id: 'full', name: 'Full exam test', desc: '15 questions on the whole course', get layout() { return FULL(); } },
-  { id: 'mid1', name: 'Midterm 1 (27–28 Nov)', desc: 'Atoms, quantum numbers, configurations, periodic table, nomenclature, stoichiometry, bonds, VSEPR, MO', layout: MID1 },
+  { id: 'mid1', name: 'Midterm 1 (27–28 Nov)', desc: 'Announced topics: atom, chemical bond, inorganic nomenclature, stoichiometry, gases', layout: MID1 },
   { id: 'mid2', name: 'Midterm 2 (9 Jan)', desc: 'Gases, liquids, solutions, thermodynamics, equilibrium, acids/bases, electrochemistry, kinetics', layout: MID2 },
 ];
 
