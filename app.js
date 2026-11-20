@@ -142,16 +142,23 @@ function render() {
   if (gateView()) return;
   renderHeader();
   const main = $('#main');
+  trialNote(main);
   ({ test: viewTest, written: viewWritten, practice: viewPractice, history: viewHistory, materials: viewMaterials, formula: viewFormula, tables: viewTables, guide: viewGuide, admin: viewAdmin })[ST.tab](main);
   window.scrollTo(0, 0);
 }
 
+function trialNote(main) {
+  const C = window.Cloud;
+  if (!C || C.status !== 'trial') return;
+  const left = Math.max(1, Math.ceil((C.trialEnds - Date.now()) / 864e5));
+  setTimeout(() => { if (!$('#trialNote')) main.insertAdjacentHTML('afterbegin', `<div class="rules small" id="trialNote">Trial account: ${left} day${left === 1 ? '' : 's'} left. After that the site’s owner has to approve your account to keep using the site. Your history stays saved.</div>`); }, 0);
+}
 /* ======================= SIGN-IN GATE (website with requireAccount) ======================= */
 // Shows the welcome / waiting / blocked screen instead of the app. Returns true when it did.
 function gateView() {
   const C = window.Cloud;
   if (!C || !C.gate) return false;
-  if (C.state === 'ready' && C.user && C.status === 'approved') return false;
+  if (C.state === 'ready' && C.user && C.canUse) return false;
   $('#subjectPills').innerHTML = ''; $('#tabs').innerHTML = ''; renderAccount();
   document.title = 'PoliTo Exam Trainer – practice tests for Analisi I, Chimica and Informatica';
   const main = $('#main'); const box = inner => `<div class="card gate">${inner}</div>`;
@@ -165,7 +172,7 @@ function gateView() {
     main.innerHTML = `<section class="card hero"><h1>Practice for your first-year exams at PoliTo</h1>
         <p>Timed computer tests that follow the real exam rules, written exams you can photograph and grade, practice by topic with full solutions, and your whole history with accuracy per topic. New questions every time.</p>
         <div class="row" style="margin-top:16px"><button class="btn primary big" id="gUp">Create an account</button><button class="btn big" id="gIn">Sign in</button></div>
-        <p class="small muted" style="margin:12px 0 0">${appr ? 'Free. New accounts are approved by the site’s owner before first use; to do that, the owner sees the email address you sign up with.' : 'Free. Sign in with Google or with your email.'}</p></section>
+        <p class="small muted" style="margin:12px 0 0">${appr ? (C.opts.trialDays ? `Free. You can use it right away for ${C.opts.trialDays} days; after that the site’s owner has to approve your account (the owner sees the email address you sign up with).` : 'Free. New accounts are approved by the site’s owner before first use; to do that, the owner sees the email address you sign up with.') : 'Free. Sign in with Google or with your email.'}</p></section>
       <div class="grid3">
         <div class="card"><h3>Analisi Matematica I</h3><p class="small muted">15-question computer tests (sets, limits, asymptotics, derivatives, function study, integrals, ODEs, complex numbers, theory) and written exams with function studies.</p></div>
         <div class="card"><h3>Chimica</h3><p class="small muted">Full test and both midterm formats: atoms and bonds, stoichiometry, gases, solutions, thermochemistry, equilibrium, acids and bases, electrochemistry, with the exam tables.</p></div>
@@ -176,7 +183,7 @@ function gateView() {
     $('#gUp').onclick = () => openAuth('signup'); $('#gIn').onclick = () => openAuth('signin');
   } else if (C.status === 'pending') {
     main.innerHTML = box(`<h2>Your account is waiting for approval</h2>
-      <p>You signed up as <b>${esc(C.user.email)}</b>. The site’s owner approves new accounts by hand. You don’t need to do anything else.</p>
+      <p>You signed up as <b>${esc(C.user.email)}</b>. ${C.trialEnds ? `Your ${esc(C.opts.trialDays)}-day trial ended on ${fmtDate(new Date(C.trialEnds).toISOString())}. ` : ''}The site’s owner approves accounts by hand. You don’t need to do anything else.</p>
       <p><b>Already approved but still seeing this page?</b> Press <b>Check again</b>, or reload the page (F5 on a computer, pull down or ↻ on a phone).</p>
       <div class="row"><button class="btn primary" id="gCheck">Check again</button><button class="btn" id="gOut">Sign out</button></div>
       <p class="small muted" style="margin:14px 0 0">Account ID: <code id="gUid">${esc(C.user.uid)}</code> <button class="linkbtn small" id="gCopy">Copy</button></p>
@@ -198,7 +205,7 @@ function gateView() {
 }
 document.addEventListener('visibilitychange', () => {
   const C = window.Cloud;
-  if (!document.hidden && C && C.user && C.status === 'pending') C.refreshStatus();
+  if (!document.hidden && C && C.user && (C.status === 'pending' || C.status === 'trial')) C.refreshStatus();
 });
 
 /* ======================= ADMIN (site owner only) ======================= */
@@ -217,13 +224,21 @@ function viewAdmin(main) {
         : s === 'approved' ? `<button class="btn danger" data-set="blocked" data-u="${esc(u.uid)}">Block</button>`
         : `<button class="btn" data-set="approved" data-u="${esc(u.uid)}">Unblock</button>`;
       return `<div class="urow"><div class="uinfo"><b>${esc(u.email || '(no email)')}</b>${u.name ? ` <span class="muted">· ${esc(u.name)}</span>` : ''}
-          <div class="small muted">${how(u)}${u.provider === 'password' && !u.verified ? ' · <span style="color:var(--warn)">email not verified</span>' : ''} · signed up ${u.created ? fmtDate(u.created) : '?'}${u.lastSeen ? ' · last visit ' + fmtDate(u.lastSeen) : ''}</div></div>
+          <div class="small muted">${how(u)}${u.provider === 'password' && !u.verified ? ' · <span style="color:var(--warn)">email not verified</span>' : ''} · signed up ${u.created ? fmtDate(u.created) : '?'}${u.lastSeen ? ' · last visit ' + fmtDate(u.lastSeen) : ''}${st(u) === 'pending' && u.createdAt && u.createdAt.toMillis && Cloud.opts.trialDays ? ((t => t > Date.now() ? ` · <b>trial until ${fmtDate(new Date(t).toISOString())}</b>` : ' · trial ended')(u.createdAt.toMillis() + Cloud.opts.trialDays * 864e5)) : ''}</div></div>
         <div class="row uacts">${acts}</div></div>`;
     };
     main.innerHTML = `<div class="card"><h2>Accounts</h2>
         <p class="small muted">New accounts wait here until you approve them. Blocked people can’t use the site until you unblock them. To delete an account completely, use the Firebase console (Authentication → Users).</p></div>
-      ${groups.map(([g, title]) => { const us = list.filter(u => st(u) === g); return `<div class="card"><h3>${title} <span class="muted">(${us.length})</span></h3>${us.length ? us.map(row).join('') : '<p class="muted small" style="margin:0">Nobody.</p>'}</div>`; }).join('')}`;
+      ${groups.map(([g, title]) => { const us = list.filter(u => st(u) === g); return `<div class="card"><h3>${title} <span class="muted">(${us.length})</span>${g === 'pending' && us.length > 1 ? ' <button class="btn small" id="approveAll">Approve all waiting</button>' : ''}</h3>${us.length ? us.map(row).join('') : '<p class="muted small" style="margin:0">Nobody.</p>'}</div>`; }).join('')}`;
     renderHeader();
+    const aa = $('#approveAll', main);
+    if (aa) aa.onclick = async () => {
+      const us = list.filter(u => st(u) === 'pending');
+      if (!confirm(`Approve all ${us.length} waiting accounts?`)) return;
+      aa.disabled = true; let fail = 0;
+      for (const u of us) { try { await Cloud.setStatus(u.uid, 'approved'); } catch (e) { fail++; } }
+      toast(fail ? `${us.length - fail} approved, ${fail} failed.` : `${us.length} accounts approved.`); viewAdmin(main);
+    };
     $$('[data-set]', main).forEach(b => b.onclick = async () => {
       const u = list.find(x => x.uid === b.dataset.u), to = b.dataset.set;
       if (to === 'blocked' && !confirm(`Block ${u.email}? They will not be able to use the site until you unblock them.`)) return;
@@ -648,10 +663,14 @@ function viewFormula(main) {
   bindJumps(main);
 }
 function viewGuide(main) {
-  const g = guideOf(SUB().id);
-  main.innerHTML = `<div class="card formula guide"><div class="row noprint" style="justify-content:flex-end"><button class="btn primary" id="gPrint">Print / save as PDF</button></div>${rich(g.html)}</div>`;
+  const g = guideOf(SUB().id), parts = g.parts, cur = parts.find(x => x.id === pref('gpart')) || parts[0];
+  main.innerHTML = `<div class="card formula guide"><div class="row noprint" style="justify-content:space-between;gap:8px;flex-wrap:wrap">${parts.length > 1 ? seg('gpart', parts.map(x => x.id), cur.id, parts.map(x => esc(x.name))) : '<span></span>'}
+      <div class="row" style="gap:8px">${/<details/.test(cur.html) ? '<button class="btn" id="gOpen">Show all solutions</button>' : ''}<button class="btn primary" id="gPrint">Print / save as PDF</button></div></div>${rich(cur.html)}</div>`;
   bindJumps(main);
-  $('#gPrint').onclick = () => window.print();
+  bindSeg(main, 'gpart', v => { setPref('gpart', v); render(); });
+  const all = () => $$('details', main), op = $('#gOpen', main);
+  if (op) op.onclick = () => { const open = all().some(d => !d.open); all().forEach(d => { d.open = open; }); op.textContent = open ? 'Hide all solutions' : 'Show all solutions'; };
+  $('#gPrint').onclick = () => { all().forEach(d => { d.open = true; }); window.print(); };
 }
 function viewTables(main) {
   main.innerHTML = `<div class="card formula">${sheetHtml((window.TABLES || {})[SUB().id]) || '<p class="muted">No tables for this subject.</p>'}</div>`;
@@ -840,7 +859,7 @@ function offerImport(u) {
   $('#impNo', m).onclick = () => { store.set(flag, true); m.remove(); };
 }
 if (window.Cloud) Cloud.onChange(async u => {
-  if (u && Cloud.status === 'approved') {
+  if (u && Cloud.canUse) {
     try { history.cloud = await Cloud.loadHistory(); } catch (e) { history.cloud = []; toast('Could not load your history: ' + Cloud.errorText(e)); }
     offerImport(u);
     if (Cloud.isAdmin && Cloud.opts.approval) Cloud.listUsers().then(l => { ST.pendingCount = l.filter(x => x.uid !== u.uid && x.status !== 'approved' && x.status !== 'blocked').length; if (!gateView()) renderHeader(); }).catch(() => {});

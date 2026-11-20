@@ -21,8 +21,8 @@
 <script src="written.js?v=9f275707"></script>
 <script src="formulas.js?v=eb78cbf4"></script>
 <script src="materials.js?v=29223f06"></script>
-<script src="firebase-config.js?v=e83b3634"></script>
-<script src="cloud.js?v=3167feca"></script>
+<script src="firebase-config.js?v=d9c1f401"></script>
+<script src="cloud.js?v=91599e83"></script>
 <style>
 :root {
   --bg: #f4f6f9; --card: #ffffff; --ink: #1d2433; --muted: #5f6b7d; --line: #dde3ec;
@@ -149,6 +149,14 @@ code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
 .acct-mail { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 button.acct-mail { text-decoration: underline dotted; text-underline-offset: 3px; }
 .mode:disabled { opacity: .55; cursor: default; }
+.prob { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; overflow: hidden; break-inside: avoid; }
+.prob-h { background: var(--accent-soft); padding: 7px 12px; }
+.prob-q { padding: 8px 12px; }
+.prob details { padding: 0 12px 8px; }
+.prob summary { cursor: pointer; color: var(--accent); font-size: 14px; }
+.prob ol { margin: 6px 0; padding-left: 22px; }
+.prob-a { background: var(--ok-soft); margin: 4px -12px -8px; padding: 7px 12px; }
+@media print { .prob summary { display: none; } .prob-h, .prob-a { background: #eef3f8 !important; } }
 @media print { header, .noprint, .toast { display: none !important; } body, .card { background: #fff !important; color: #000 !important; box-shadow: none !important; border: 0 !important; } .guide h3 { break-after: avoid; } .guide table, .guide li { break-inside: avoid; } }
 .gbtn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
 .orline { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0 4px; }
@@ -177,7 +185,7 @@ button.acct-mail { text-decoration: underline dotted; text-underline-offset: 3px
   <nav class="tabs" id="tabs"></nav>
 </header>
 <main id="main"></main>
-<script src="guides.js?v=d201a7fb"></script>
-<script src="app.js?v=8d09d077"></script>
+<script src="guides.js?v=8b479a8d"></script>
+<script src="app.js?v=5eb4fdc1"></script>
 </body>
 </html>

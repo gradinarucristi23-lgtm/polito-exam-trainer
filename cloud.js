@@ -4,7 +4,9 @@
    window.SITE_OPTIONS (website only):
      requireAccount  the site can only be used after signing in
      approval        new accounts wait until the admin approves them
-     adminUid        the account ID of the site's owner (sees the Admin tab) */
+     adminUid        the account ID of the site's owner (sees the Admin tab)
+     trialDays       with approval: new accounts can use the site for this many days before they need approval
+                     (status 'trial'; the Firestore rules check the server-set createdAt) */
 (function (G) {
 'use strict';
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
@@ -16,11 +18,13 @@ const Cloud = {
   state: 'off',            // off | loading | ready
   failed: false,           // the account service could not be loaded
   user: null,
-  status: null,            // approved | pending | blocked | error (only while signed in)
+  status: null,            // approved | trial | pending | blocked | error (only while signed in)
+  trialEnds: null,         // ms timestamp when the trial of a pending account ends
   statusError: null,
   profile: null,
   _listeners: [],
   get gate() { return !!(this.opts.requireAccount && cfg && cfg.apiKey && /^https?:$/.test(location.protocol)); },
+  get canUse() { return this.status === 'approved' || this.status === 'trial'; },
   get isAdmin() { return !!(this.user && this.opts.adminUid && this.user.uid === this.opts.adminUid); },
   onChange(fn) { this._listeners.push(fn); },
   _emit() { this._listeners.forEach(fn => { try { fn(this.user); } catch (e) { console.error(e); } }); },
@@ -52,15 +56,23 @@ const Cloud = {
     const doc = { email: tok.claims.email || '', verified: !!tok.claims.email_verified, provider: tok.signInProvider || '',
       name: String(u.displayName || '').slice(0, 100), created: old.created || now, lastSeen: now };
     if (!old.status) doc.status = 'pending';
-    await ref.set(doc, { merge: true });
-    return { ...old, ...doc };
+    if (!snap.exists) doc.createdAt = G.firebase.firestore.FieldValue.serverTimestamp();   // trusted: the rules require server time
+    try { await ref.set(doc, { merge: true }); }
+    catch (e) {   // older Firestore rules without createdAt: save the profile without it (no trial, normal approval)
+      if (!doc.createdAt || (e && e.code) !== 'permission-denied') throw e;
+      delete doc.createdAt; await ref.set(doc, { merge: true }); return { ...old, ...doc, createdMs: null };
+    }
+    const createdMs = old.createdAt && old.createdAt.toMillis ? old.createdAt.toMillis() : (snap.exists ? null : Date.now());
+    return { ...old, ...doc, createdMs };
   },
   async _loadStatus(u) {
     this.statusError = null;
     try {
       this.profile = await this._profile(u);
-      const s = this.profile.status;
-      this.status = this.isAdmin ? 'approved' : s === 'blocked' ? 'blocked' : (!this.opts.approval || s === 'approved') ? 'approved' : 'pending';
+      const s = this.profile.status, days = Number(this.opts.trialDays) || 0;
+      this.trialEnds = days && this.profile.createdMs ? this.profile.createdMs + days * 864e5 : null;
+      this.status = this.isAdmin ? 'approved' : s === 'blocked' ? 'blocked' : (!this.opts.approval || s === 'approved') ? 'approved'
+        : (this.trialEnds && Date.now() < this.trialEnds ? 'trial' : 'pending');
     } catch (e) {
       console.error('Profile:', e);
       this.statusError = e;
@@ -102,7 +114,7 @@ const Cloud = {
     if (this.isAdmin) throw new Error('The site owner’s account cannot be deleted from the site.');
     if (this.provider() === 'password') await u.reauthenticateWithCredential(G.firebase.auth.EmailAuthProvider.credential(u.email, password));
     else await u.reauthenticateWithPopup(this._google());
-    if (this.status === 'approved') {
+    if (this.canUse) {
       const snap = await this.db.collection('users').doc(u.uid).collection('history').get();
       for (let i = 0; i < snap.docs.length; i += 400) {
         const b = this.db.batch(); snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit();

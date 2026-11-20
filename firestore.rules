@@ -4,16 +4,20 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.uid == 'w7PUmVfpeIYyvmxMYDRekHa3wpq1'; }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
-    // Open site: every account with a profile may use it, except the ones the admin blocked.
-    // (For approval mode, change the last check back to: .data.get('status', '') == 'approved')
+    // Approved by the admin, or a new account inside its 3-day trial (createdAt is set by the server at sign-up).
+    // Blocked accounts never pass. (Open site instead: status != 'blocked'.)
     function approved(uid) {
-      return isAdmin() || (exists(/databases/$(database)/documents/users/$(uid))
-        && get(/databases/$(database)/documents/users/$(uid)).data.get('status', '') != 'blocked');
+      return isAdmin() || (exists(/databases/$(database)/documents/users/$(uid)) && trialOrApproved(get(/databases/$(database)/documents/users/$(uid)).data));
+    }
+    function trialOrApproved(p) {
+      return p.get('status', '') == 'approved'
+        || (p.get('status', '') == 'pending' && p.get('createdAt', null) is timestamp
+            && request.time < p.createdAt + duration.value(3, 'd'));
     }
     // What people may write in their own profile: every field is checked against their sign-in token.
     function ownProfileOk() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['email', 'name', 'provider', 'verified', 'created', 'lastSeen', 'status', 'decided'])
+      return d.keys().hasOnly(['email', 'name', 'provider', 'verified', 'created', 'createdAt', 'lastSeen', 'status', 'decided'])
         && d.email == request.auth.token.email
         && d.verified == request.auth.token.email_verified
         && d.provider == request.auth.token.firebase.sign_in_provider
@@ -25,9 +29,12 @@ service cloud.firestore {
       allow read: if isOwner(uid) || isAdmin();
       // A new account always starts as 'pending'.
       allow create: if isOwner(uid) && ownProfileOk()
-                    && request.resource.data.status == 'pending' && !('decided' in request.resource.data);
+                    && request.resource.data.status == 'pending' && !('decided' in request.resource.data)
+                    && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time);
       // People can refresh their own details but never change their own status. Only the admin can.
+      // createdAt (server time of sign-up) can never be changed.
       allow update: if (isOwner(uid) && ownProfileOk()
+                        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
                         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'decided'])
                             || (!('status' in resource.data) && request.resource.data.status == 'pending'
                                 && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['decided']))))
