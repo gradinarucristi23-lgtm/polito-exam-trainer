@@ -301,25 +301,77 @@ const TASKS = [
 /* ---------------- Computer Sciences (07JCJ): theory short answers + programming ---------------- */
 const bits = (n, w) => n.toString(2).padStart(w || 0, '0');
 const neg = x => String(x).replace('-', '−');
-// Information-representation question with fresh numbers.
+// Information-representation question with fresh numbers: the kinds asked in the past exams
+// (github.com/polito-informatica/Esempi-esame, teoria/numeri.md).
+const hx = n => (n & 255).toString(16).toUpperCase().padStart(2, '0');
+const c2v = (n, w) => (n >= 2 ** (w - 1) ? n - 2 ** w : n);   // an n-bit pattern read in two's complement
 function csNumQ(L, pts) {
-  const k = rnd.pick(L <= 2 ? ['conv', 'c2', 'nbits'] : L <= 4 ? ['c2', 'sum', 'conv', 'fp'] : ['fp', 'sum', 'c2']);
+  const k = rnd.pick(L <= 2 ? ['conv', 'range', 'nbits', 'hexval', 'c2'] : L <= 4 ? ['c2', 'sum', 'hexsum', 'order', 'hexval', 'cmp', 'base', 'conv', 'fp'] : ['fp', 'sum', 'hexsum', 'order', 'cmp', 'base']);
   if (k === 'conv') {
-    const n = rnd.int(100, 999), b = bits(n), h = n.toString(16).toUpperCase();
-    const g = bits(n, Math.ceil(b.length / 4) * 4).match(/.{4}/g).join(' ');
+    const n = rnd.int(100, 999), b = bits(n), h = n.toString(16).toUpperCase(), o = n.toString(8);
+    const g4 = bits(n, Math.ceil(b.length / 4) * 4).match(/.{4}/g).join(' '), g3 = bits(n, Math.ceil(b.length / 3) * 3).match(/.{3}/g).join(' ');
     const chk = h.split('').map((d, i) => `${parseInt(d, 16)}·16<sup>${h.length - 1 - i}</sup>`).join(' + ');
-    return { pts, q: `Convert the decimal number <b>${n}</b> to binary and to hexadecimal, showing the method.`,
-      sol: `Divide by 2 repeatedly and read the remainders from the last one: ${n}<sub>10</sub> = <code>${b}</code><sub>2</sub>. Group the bits by 4 from the right: <code>${g}</code> → <code>${h}</code><sub>16</sub> (check: ${chk} = ${n}). Full marks need the method, not only the result.` };
+    return { pts, q: `Convert the decimal number <b>${n}</b> to binary, then convert the result to octal and to hexadecimal. Show the method.`,
+      sol: `Divide by 2 repeatedly and read the remainders from the last one: ${n}<sub>10</sub> = <code>${b}</code><sub>2</sub>. Octal: group the bits by 3 from the right, <code>${g3}</code> → <b>${o}</b><sub>8</sub>. Hexadecimal: group them by 4, <code>${g4}</code> → <b>${h}</b><sub>16</sub> (check: ${chk} = ${n}). Full marks need the method, not only the result.` };
+  }
+  if (k === 'range') {
+    const n = rnd.int(5, 10), H = 2 ** (n - 1);
+    return { pts, q: `With <b>${n} bits</b>, what are the smallest and the largest value that can be represented in pure binary and in two's complement? Give each value in binary and in decimal.`,
+      sol: `Pure binary: smallest <code>${'0'.repeat(n)}</code> = 0, largest <code>${'1'.repeat(n)}</code> = 2<sup>${n}</sup> − 1 = <b>${2 * H - 1}</b>. Two's complement: smallest <code>1${'0'.repeat(n - 1)}</code> = −2<sup>${n - 1}</sup> = <b>−${H}</b>, largest <code>0${'1'.repeat(n - 1)}</code> = 2<sup>${n - 1}</sup> − 1 = <b>${H - 1}</b>. (One more negative value than positive ones, because zero uses a pattern with sign bit 0.)` };
   }
   if (k === 'nbits') {
     const N = rnd.int(40, 5000), b = Math.ceil(Math.log2(N));
     return { pts, q: `How many different values can be represented with n bits? What is the minimum number of bits needed to give a different code to each of ${N} objects? Explain.`,
       sol: `With n bits there are 2<sup>n</sup> different combinations. We need the smallest n with 2<sup>n</sup> ≥ ${N}: 2<sup>${b - 1}</sup> = ${2 ** (b - 1)} is not enough, 2<sup>${b}</sup> = ${2 ** b} is, so <b>${b} bits</b>.` };
   }
+  if (k === 'hexval') {
+    const v = rnd.int(0x81, 0xFF), m = v & 127;
+    return { pts, q: `The hexadecimal value <b>${hx(v)}</b> is one byte (8 bits). What is its decimal value read as (1) pure binary, (2) sign and magnitude, (3) two's complement?`,
+      sol: `Each hex digit is 4 bits: ${hx(v)} = <code>${bits(v >> 4, 4)} ${bits(v & 15, 4)}</code>. (1) Pure binary: ${v >> 4}·16 + ${v & 15} = <b>${v}</b>. (2) Sign and magnitude: the first bit 1 means negative, the other 7 bits <code>${bits(m, 7)}</code> = ${m}, so <b>−${m}</b>. (3) Two's complement: first bit 1, so negative; value = ${v} − 256 = <b>−${256 - v}</b> (check: invert the bits and add 1 → <code>${bits(256 - v, 8)}</code> = ${256 - v}).` };
+  }
+  if (k === 'order') {
+    const vals = [];
+    while (vals.length < 6) {
+      const v = rnd.pick([rnd.int(0, 127), rnd.int(128, 255), rnd.int(128, 255), rnd.pick([0x7F, 0x80, 0xFF, 0x01])]);
+      if (!vals.some(x => Math.abs(c2v(x, 8)) === Math.abs(c2v(v, 8)))) vals.push(v);
+    }
+    const up = vals.slice().sort((a, b) => c2v(a, 8) - c2v(b, 8)), near = vals.reduce((a, b) => (Math.abs(c2v(b, 8)) < Math.abs(c2v(a, 8)) ? b : a));
+    return { pts, q: `These hexadecimal values are 8-bit numbers in two's complement: <code>${vals.map(hx).join('&nbsp;&nbsp;')}</code>. (a) Write them in increasing order of value (decimal values are not required). (b) Which one is closest to zero?`,
+      sol: `A first hex digit 8–F means sign bit 1 (negative, value = pattern − 256); 0–7 means positive or zero. Values: ${vals.map(v => `${hx(v)} = ${neg(c2v(v, 8))}`).join(', ')}. (a) <b>${up.map(hx).join(' &lt; ')}</b>. (b) <b>${hx(near)}</b> (${neg(c2v(near, 8))}). Tip: among the negatives, the larger the pattern, the closer to zero (FF = −1, 80 = −128).` };
+  }
+  if (k === 'cmp') {
+    const wa = rnd.int(6, 8), wb = rnd.int(4, wa - 1), same = rnd.int(0, 2) === 0;
+    const vb = same ? -rnd.int(1, 2 ** (wb - 1)) : rnd.int(-(2 ** (wb - 1)), 2 ** (wb - 1) - 1);
+    const va = same ? vb : rnd.int(-(2 ** (wa - 1)), 2 ** (wa - 1) - 1);
+    const A = bits(va & (2 ** wa - 1), wa), B = bits(vb & (2 ** wb - 1), wb), rel = va > vb ? 'A &gt; B' : va < vb ? 'A &lt; B' : 'A = B';
+    return { pts, q: `A = <code>${A}</code> is in two's complement on ${wa} bits and B = <code>${B}</code> is in two's complement on ${wb} bits. Which relation holds: A &gt; B, A &lt; B or A = B? Explain.`,
+      sol: `To compare them, bring B to ${wa} bits by repeating its sign bit (sign extension): B = <code>${bits(vb & (2 ** wa - 1), wa)}</code>. Values (a pattern with sign bit 1 is worth its pure-binary value minus 2<sup>n</sup>): A = ${neg(va)}, B = ${neg(vb)}. So <b>${rel}</b>.${va === vb ? ' The two patterns look different but are the same number.' : ''}` };
+  }
+  if (k === 'base') {
+    if (rnd.int(0, 1)) {   // with a carry in the units: exactly one base works
+      const b = rnd.int(5, 9); let a1, a0, c1, c0;
+      do { a1 = rnd.int(1, b - 1); c1 = rnd.int(1, b - 1); a0 = rnd.int(1, b - 1); c0 = rnd.int(1, b - 1); } while (a0 + c0 < b || a1 + c1 + 1 >= b);
+      const r1 = a1 + c1 + 1, r0 = a0 + c0 - b;
+      return { pts, q: `In which base is the operation <b>${a1}${a0} + ${c1}${c0} = ${r1}${r0}</b> correct? Explain.`,
+        sol: `In base β the digits are worth: (${a1}β + ${a0}) + (${c1}β + ${c0}) = ${r1}β + ${r0}, so ${a1 + c1}β + ${a0 + c0} = ${r1}β + ${r0} and <b>β = ${b}</b>. Check: in the units ${a0} + ${c0} = ${a0 + c0} = 1·${b} + ${r0}, a carry of 1 goes to the next digit (${a1} + ${c1} + 1 = ${r1}). Every digit is smaller than ${b}, so base ${b} is valid, and it is the only one.` };
+    }
+    let a1, a0, c1, c0;
+    do { a1 = rnd.int(1, 4); c1 = rnd.int(1, 4); a0 = rnd.int(0, 4); c0 = rnd.int(0, 4); } while (a1 + c1 < 3 && a0 + c0 < 3);
+    const r1 = a1 + c1, r0 = a0 + c0, m = Math.max(r1, r0);
+    return { pts, q: `In which base is the operation <b>${a1}${a0} + ${c1}${c0} = ${r1}${r0}</b> correct? (a) only in base ${m + 1}; (b) in no base; (c) in any base; (d) in any base ≥ ${m + 1}. Explain.`,
+      sol: `In base β: (${a1}β + ${a0}) + (${c1}β + ${c0}) = ${r1}β + ${r0} holds for every β, because no digit sum reaches the base (no carry). The only condition is that every digit is smaller than the base; the largest digit is ${m}, so the answer is <b>(d) any base ≥ ${m + 1}</b> (base 10 included).` };
+  }
   if (k === 'c2') {
     const a = rnd.int(20, 127);
     return { pts, q: `Represent <b>−${a}</b> in two's complement on 8 bits. Which range of integers can be represented on 8 bits in two's complement?`,
       sol: `${a} = <code>${bits(a, 8)}</code>; invert every bit: <code>${bits(~a & 255, 8)}</code>; add 1: <code>${bits(256 - a, 8)}</code> = −${a}. On n bits the range is −2<sup>n−1</sup> … 2<sup>n−1</sup>−1, so <b>−128 … +127</b> on 8 bits. (About two thirds of the points for the representation, one third for the range.)` };
+  }
+  if (k === 'hexsum') {
+    const a = rnd.int(0, 255), b = rnd.int(0, 255), x = c2v(a, 8), y = c2v(b, 8), s = x + y, r = (a + b) & 255, ov = s > 127 || s < -128;
+    return { pts, q: `<b>${hx(a)}</b> and <b>${hx(b)}</b> are two 8-bit numbers in two's complement, written in hexadecimal. Compute their sum on 8 bits (give the result in hexadecimal) and say whether there is overflow. Show the steps.`,
+      sol: `${hx(a)} = <code>${bits(a, 8)}</code> (${neg(x)}), ${hx(b)} = <code>${bits(b, 8)}</code> (${neg(y)}). Add in binary and keep 8 bits${a + b > 255 ? ' (the carry out of the 8th bit is discarded)' : ''}: <code>${bits(r, 8)}</code> = <b>${hx(r)}</b>. ` +
+        (ov ? `<b>Overflow</b>: both operands are ${x < 0 ? 'negative' : 'positive'} but the result has sign bit ${x < 0 ? 0 : 1}; the true sum ${neg(s)} is outside −128 … 127.`
+            : `<b>No overflow</b>: ${(x < 0) !== (y < 0) ? 'operands with different signs can never overflow' : 'the result has the same sign as the operands'}; ${hx(r)} = ${neg(c2v(r, 8))} = ${neg(x)} + (${neg(y)}).`) };
   }
   if (k === 'sum') {
     const c = rnd.int(0, 2); let x, y;
@@ -339,10 +391,34 @@ function csNumQ(L, pts) {
   return { pts, q: `The 16 bits <code>${sg}${bits(E, 5)}${fb}</code> are a number in IEEE 754 half precision (1 sign bit, 5 exponent bits with bias 15, 10 fraction bits). What is its decimal value?`,
     sol: `Sign <code>${sg}</code> → ${sg ? 'negative' : 'positive'}. Exponent <code>${bits(E, 5)}</code> = ${E}, minus the bias 15 → ${neg(e)}. Fraction <code>${fb}</code>: significand 1.${fb.replace(/0+$/, '')}<sub>2</sub> = 1 + ${terms} = ${sig}. Value = ${sg ? '−' : ''}${sig} × 2<sup>${neg(e)}</sup> = <b>${neg(val)}</b>. (Points split between the three fields, the exponent and the final value.)` };
 }
+// Computer-architecture calculations asked in the past exams (teoria/architettura.md): bus widths, memory sizes, clock.
+const memSize = n => { for (const [u, e] of [['GB', 30], ['MB', 20], ['kB', 10]]) if (n >= 2 ** e && n % 2 ** e === 0) return `${n / 2 ** e} ${u}`; return n + ' bytes'; };
+const r3 = x => { const y = +x.toFixed(3); return (Math.abs(x - y) > 1e-9 ? '≈ ' : '') + y; };
+function csArchNum(pts) {
+  const k = rnd.pick(['maxmem', 'cell', 'abus', 'clock']), note = ' (for memory sizes 1 kB = 2<sup>10</sup> B, 1 MB = 2<sup>20</sup> B, 1 GB = 2<sup>30</sup> B)';
+  if (k === 'maxmem') {
+    const n = rnd.int(16, 32), p = rnd.pick([1, 2, 4, 8]), lp = Math.log2(p);
+    return { pts, q: `A computer has an address bus of <b>${n} bits</b> and each memory cell holds <b>${p} byte${p > 1 ? 's' : ''}</b> (parallelism ${8 * p} bits). What is the largest memory that can be installed? Show the steps.`,
+      sol: `${n} address lines give 2<sup>${n}</sup> different addresses, one per cell. Maximum memory = number of cells × cell size = 2<sup>${n}</sup> × ${p} B${lp ? ` = 2<sup>${n + lp}</sup> B` : ''} = <b>${memSize(2 ** n * p)}</b>${note}.` };
+  }
+  if (k === 'cell') {
+    const n = rnd.int(10, 24), d = rnd.int(0, 3), M = 2 ** (n + d);
+    return { pts, q: `A RAM of <b>${memSize(M)}</b> has an address bus of <b>${n} bits</b>. What is its parallelism, i.e. the size of each memory cell in bits? Show the steps.`,
+      sol: `The address bus selects 2<sup>${n}</sup> cells. Cell size = memory size / number of cells = 2<sup>${n + d}</sup> B / 2<sup>${n}</sup> = ${2 ** d} byte${d ? 's' : ''} = <b>${8 * 2 ** d} bits</b>${note}.` };
+  }
+  if (k === 'abus') {
+    const p = rnd.pick([8, 16, 32, 64]), m = rnd.int(16, 34), n = m - Math.log2(p / 8);
+    return { pts, q: `What is the minimum number of address-bus bits needed to address a memory of <b>${memSize(2 ** m)}</b> with a parallelism of <b>${p} bits</b>?`,
+      sol: `Each cell holds ${p} bits = ${p / 8} B, so the memory has 2<sup>${m}</sup> B / ${p / 8} B = 2<sup>${n}</sup> cells. Every cell needs its own address and n bits give 2<sup>n</sup> addresses, so <b>${n} bits</b>${note}.` };
+  }
+  const f = rnd.pick([1, 1.5, 2, 2.5, 3, 4]), N = rnd.pick([1e6, 2e6, 5e6, 1e7, 1e8]), c = rnd.int(2, 8), cyc = N * c;
+  return { pts, q: `A CPU has a clock frequency of <b>${f} GHz</b>. (a) What is the clock period? (b) How long does a program take that executes ${N.toLocaleString('en')} instructions, each needing ${c} clock cycles?`,
+    sol: `(a) Period = 1 / frequency = 1 / (${f}·10<sup>9</sup> Hz) = <b>${r3(1 / f)} ns</b>. (b) The program needs ${N.toLocaleString('en')} × ${c} = ${cyc.toLocaleString('en')} cycles; time = cycles / frequency = ${cyc.toLocaleString('en')} / (${f}·10<sup>9</sup>) s = <b>${r3(cyc / (f * 1e6))} ms</b>.` };
+}
 // Concept questions with model answers (what the answer must contain).
 const CSTH = [
   ['Describe the von Neumann architecture: name its main components and what each one does.', 'CPU = control unit (fetches and decodes the instructions), ALU (arithmetic and logic operations) and registers (small, very fast memory, e.g. the program counter); main memory (RAM) holding <b>both the program and the data</b> (stored-program idea); input/output devices; a bus (data, address, control) connecting them.'],
-  ['Explain the fetch – decode – execute cycle of a CPU.', 'Fetch: the instruction at the address in the program counter is read from memory and the program counter moves to the next instruction. Decode: the control unit works out the operation and its operands. Execute: the ALU or another unit performs it and stores the result (register or memory). The cycle repeats for every instruction; jumps change the program counter.'],
+  ['Explain the fetch – decode – execute cycle of a CPU.', 'Fetch: the instruction at the address in the program counter (PC) is copied from memory into the instruction register (IR) and the PC moves to the next instruction. Decode: the control unit works out the operation and its operands. Execute: the ALU or another unit performs it and stores the result (register or memory). The cycle repeats for every instruction; jumps change the program counter.'],
   ['What are the differences between main memory (RAM) and secondary storage (hard disk, SSD)? Give at least two for each.', 'RAM: volatile (lost when power is off), fast, smaller and more expensive per byte, directly addressed by the CPU, holds the programs being run and their data. Secondary storage: non-volatile, much slower, much larger and cheaper, holds files permanently; programs must be loaded into RAM to run.'],
   ['What is the difference between a compiler and an interpreter? Which one does Python use?', 'A compiler translates the whole source program into machine code before running it, producing an executable; many errors are found before execution. An interpreter translates and executes the program statement by statement, so errors appear when that line is reached. Python is interpreted (the source is turned into bytecode run by the Python virtual machine).'],
   ['What is an algorithm? Which properties must it have?', 'A finite sequence of precise, unambiguous steps that solves a problem. Properties: finiteness (it ends after a finite number of steps), definiteness (each step is unambiguous), effectiveness (each step can actually be carried out), it has inputs and produces outputs, and ideally it is general (solves every instance of the problem).'],
@@ -362,8 +438,73 @@ const CSTH = [
   ['What is the difference between a bit, a byte, a kilobyte (kB) and a kibibyte (KiB)?', 'A bit is a single binary digit (0 or 1). A byte is 8 bits (256 values). A kilobyte (kB) is 1000 bytes (SI prefix), a kibibyte (KiB) is 2<sup>10</sup> = 1024 bytes; likewise MB = 10<sup>6</sup> B and MiB = 2<sup>20</sup> B.'],
   ['What is pseudo-code and why is it used before writing a program?', 'An informal, language-independent description of an algorithm with structured steps (read, if/else, repeat, write). It lets you design and check the logic of the solution without worrying about the syntax of a language, and it is then translated into code. Like a flowchart, it is part of the problem-solving phase (analysis and design) before implementation.'],
 ];
+// More concept questions, modelled on the past exams (teoria/architettura.md, teoria/python.md), with model answers.
+const CS_NUM = [
+  ['Why are real numbers usually stored in floating point (IEEE 754) and not in fixed point? What are the advantages?', 'Floating point stores sign, exponent and significand (±1.f × 2<sup>e</sup>, like scientific notation). With the same number of bits it covers a huge range of magnitudes (about 10<sup>−38</sup> … 10<sup>38</sup> in single precision) with the same <i>relative</i> precision, while fixed point has a fixed number of decimals: a small range, and small numbers lose precision. The standard also gives the same results on every computer and defines special values (±0, ±∞, NaN). Drawback: most decimals are approximated (0.1 is not exact), so results carry rounding errors.'],
+  ['Compare sign and magnitude with two\'s complement: how is a negative number represented, and why do computers use two\'s complement?', 'Sign and magnitude: the first bit is the sign (1 = negative), the others the absolute value; −5 on 8 bits = <code>10000101</code>. It has two zeros (<code>00000000</code> and <code>10000000</code>) and needs special rules to add numbers with different signs. Two\'s complement: invert the bits of the absolute value and add 1; −5 = <code>11111011</code>. Only one zero, range −2<sup>n−1</sup> … 2<sup>n−1</sup>−1, and addition and subtraction use the same adder as unsigned numbers (subtracting = adding the opposite), so the hardware is simpler.'],
+  ['What is overflow in the sum of two numbers in two\'s complement? How do you recognise it?', 'Overflow happens when the true result is outside the representable range (−2<sup>n−1</sup> … 2<sup>n−1</sup>−1 on n bits), so the n-bit result is wrong. It can only happen when the two operands have the <b>same sign</b>, and you recognise it because the result has the opposite sign (8 bits: 100 + 50 → <code>01100100 + 00110010 = 10010110</code>, which reads −106). The carry out of the last bit is discarded and is <b>not</b> by itself a sign of overflow (−1 + −1 gives a carry and the correct −2).'],
+];
+const CS_ARCH = [
+  ['What is the memory hierarchy of a computer and why is it useful? List the levels from the fastest to the slowest.', 'Fast memories are small and expensive per byte; large memories are slow and cheap. The hierarchy combines them: <b>registers → cache (L1, L2, L3) → main memory (RAM) → secondary storage (SSD, hard disk)</b>. Going down, speed and cost per byte decrease and capacity increases. The data in use are kept in the small fast levels (locality: programs reuse recent and nearby data), so the system works almost at the speed of the fastest level with the capacity of the largest.'],
+  ['Describe the RAM and the cache memory: what are they for and how do they differ?', 'RAM (main memory): volatile, holds the programs being executed and their data; the CPU reads and writes any cell by its address in the same time (random access). Cache: a small, very fast memory inside or next to the CPU that keeps copies of the most recently used RAM data, so most accesses avoid the slower RAM. The cache is faster, much smaller (MB instead of GB) and more expensive per byte, and it is managed by the hardware, not by the program.'],
+  ['What are the buses of a computer? Which types exist and what does each one carry?', 'A bus is a set of shared lines connecting CPU, memory and I/O devices. <b>Address bus</b>: the address of the memory cell or device to access (from the CPU; its width sets how many cells can be addressed). <b>Data bus</b>: the data read or written (both directions; its width is how many bits move at once). <b>Control bus</b>: control signals (read/write, clock, interrupts, ready). A serial bus sends one bit at a time on one line (USB, SATA, PCIe lanes); a parallel bus sends several bits at once on several lines (memory bus, old PATA).'],
+  ['What are the ALU and the FPU? What does each one do, and why are integer operations faster than operations on real numbers?', 'Both belong to the CPU\'s execution unit. The <b>ALU</b> (Arithmetic Logic Unit) does integer arithmetic, comparisons and logic operations (AND, OR, NOT, shifts) and sets the flags. The <b>FPU</b> (Floating Point Unit) does operations on floating-point (IEEE 754) numbers. A floating-point operation needs more steps (align the exponents, operate on the significands, normalise and round), so it takes longer than an integer one.'],
+  ['Describe the control unit of a CPU: which blocks does it contain and what does it do?', 'It coordinates the execution of the instructions: it fetches the next instruction from memory, decodes it and generates the control signals that make the ALU, registers, memory and buses do the right operation at the right moment (timed by the clock). Main blocks: the <b>program counter</b> (address of the next instruction), the <b>instruction register</b> (the instruction being executed), the <b>decoder</b> and the control-signal generator (sequencer).'],
+  ['What are the registers of a CPU? Explain the role of the program counter, the instruction register and the flag register.', 'Registers are a few very fast memory cells inside the CPU, the top of the memory hierarchy; they hold the operands and results being worked on. <b>Program counter (PC)</b>: address of the next instruction, incremented at each fetch and changed by jumps. <b>Instruction register (IR)</b>: the instruction currently being decoded and executed. <b>Flag (status) register</b>: bits set by the ALU after each operation (zero, sign, carry, overflow), used by conditional jumps.'],
+  ['What is the clock of a computer? What are its period and its frequency, and in which units are they measured?', 'The clock is a periodic signal that synchronises the operations of the CPU: each step of the instruction cycle takes one or more clock cycles. The <b>period</b> T is the duration of one cycle (seconds, e.g. ns); the <b>frequency</b> f = 1/T is the number of cycles per second (hertz): 3 GHz = 3·10<sup>9</sup> cycles/s, T ≈ 0.33 ns. A higher frequency gives more operations per second but more power use and heat.'],
+  ['Why did CPU clock frequencies grow for decades and then almost stop growing? What did designers do instead?', 'Smaller transistors switch faster, so frequencies rose from MHz to GHz. Around 2005 they stopped at about 3–5 GHz because power consumption and heat grow with the frequency and cannot be removed efficiently (the power wall). Performance then grew in other ways: several cores working in parallel (multi-core CPUs), larger caches and more work done per clock cycle.'],
+  ['What does it mean that a computer is "64-bit"? Why are almost all current computers 64-bit?', 'The CPU works on 64-bit words: its registers, ALU and addresses are 64 bits wide. The main reason: 32-bit addresses can reach only 2<sup>32</sup> B = 4 GB of memory, which is too little today, while 64-bit addresses allow far more. It also handles larger integers in a single operation.'],
+  ['What is the relationship between the width of the address bus, the width of the data bus and the maximum memory of a system?', 'An address bus of n bits can select 2<sup>n</sup> different cells; the data bus width (parallelism) is the size of each cell, transferred in one access. Maximum memory = 2<sup>n</sup> × cell size. Example: n = 32 with 1-byte cells → 2<sup>32</sup> B = 4 GB; with 8-byte cells → 32 GB. A wider data bus does not add cells but moves more bits per access.'],
+  ['List at least four tasks of the operating system.', 'Managing processes (starting programs and sharing the CPU among them: scheduling); managing memory (assigning RAM to programs and protecting them from each other); managing files and the file system; managing input/output devices through drivers; user interface and security (accounts, permissions). It hides the hardware details from the programs.'],
+  ['Put these operations in increasing order of time: read a CPU register, read a file from a hard disk, read the RAM, read the cache, download a file from the Internet, read an SSD.', '<b>Register &lt; cache &lt; RAM &lt; SSD &lt; hard disk &lt; Internet.</b> Rough orders of magnitude: register under 1 ns, cache 1–10 ns, RAM about 100 ns, SSD tens to hundreds of µs, hard disk several ms (moving parts), Internet tens of ms or more. It is the memory hierarchy: the faster, the smaller and more expensive.'],
+  ['What are the advantages and disadvantages of connecting all the devices of a computer to one shared bus?', 'Advantages: simple and cheap, few wires, easy to add devices that follow the same rules. Disadvantages: only one transfer at a time, so the bus becomes a bottleneck when many devices communicate; the slowest device can slow the others; long, crowded lines limit the speed. That is why real computers have several buses (memory bus, PCIe, USB…).'],
+];
+const CS_PY = [
+  ['What is an <b>alias</b> in Python? Show the possible problem with an example on lists, and how to avoid it.', 'Two names are aliases when they refer to the same object: <code>a = [1, 2, 3]; b = a</code>. With a mutable object a change through one name is seen through the other: after <code>b.append(4)</code>, <code>a</code> is <code>[1, 2, 3, 4]</code>. The same happens when a list is passed to a function: the function can change the caller\'s list. For an independent copy use <code>b = a[:]</code>, <code>list(a)</code> or <code>a.copy()</code>. With immutable objects (int, str, tuple) aliasing causes no problems.'],
+  ['Why are Python dictionaries called that? What does it mean that a dictionary is an "associative array"?', 'Like a real dictionary it associates each <b>key</b> (the word) with a <b>value</b> (its definition) and finds the value from the key quickly. "Associative array": instead of positions 0, 1, 2… as in a list, elements are reached through keys of an immutable type: <code>age = {"Anna": 20, "Luca": 22}</code>, <code>age["Luca"]</code> → 22. Keys are unique and the lookup is fast (hashing) whatever the size.'],
+  ['What is indentation used for in Python? Give an example where it changes the result.', 'In Python indentation is part of the syntax: it defines the blocks (body of <code>if</code>, loops, functions) instead of braces. Wrong indentation gives an IndentationError or a different program. <pre class="code">total = 0\nfor x in [1, 2, 3]:\n    total += x\n    print(total)</pre>prints 1, 3, 6; with <code>print(total)</code> not indented (after the loop) it prints only 6.'],
+  ['Give an example in which the order of the <code>elif</code> branches changes the result.', 'Only the first true branch is executed. <pre class="code">if grade >= 18:\n    print("passed")\nelif grade >= 27:\n    print("excellent")</pre>never prints "excellent": 28 already satisfies the first test. The more specific condition must come first: <code>if grade >= 27</code> … <code>elif grade >= 18</code> ….'],
+  ['A programmer wants to store the 2×2 matrix with rows (1, 2) and (3, 4). Discuss these options: <code>[1, 2, 3, 4]</code>, <code>[[1, 2], [3, 4]]</code>, <code>[[1, 3], [2, 4]]</code>.', '<code>[[1, 2], [3, 4]]</code> is the natural one: a list of rows, element (i, j) is <code>m[i][j]</code>. <code>[[1, 3], [2, 4]]</code> is a list of columns: also correct if used consistently (element (i, j) is <code>m[j][i]</code>) but less intuitive. <code>[1, 2, 3, 4]</code> loses the shape: it works only if the number of columns is known and element (i, j) is computed as <code>m[i * ncols + j]</code>; not wrong, but error-prone.'],
+  ['What are the differences between a list and a set in Python? Give an example of data better stored in a list and of data better stored in a set.', 'List: ordered, elements reached by position, duplicates allowed, any element type. Set: no order and no indexing, no duplicates, elements must be immutable (hashable), very fast <code>in</code> test and set operations (union, intersection, difference). List: the daily temperatures in order (repeats matter). Set: the distinct words of a text, or the students present at a lab (membership questions). <code>set(lst)</code> removes duplicates and loses the order.'],
+  ['Which instruction creates in <code>d2</code> a <b>copy</b> of the dictionary <code>d1</code>? (1) <code>d2 = d1</code> (2) <code>d2 = dict(d1.values())</code> (3) <code>d2 = dict(d1.keys())</code> (4) <code>d2 = dict(d1)</code>', '<b>(4)</b>: <code>dict(d1)</code> builds a new dictionary with the same keys and values (like <code>d1.copy()</code>). (1) only creates an alias: both names refer to the same dictionary. (2) and (3) pass single values or keys instead of key–value pairs, so they do not rebuild <code>d1</code> (normally they raise an error).'],
+  ['Which of these structures cannot be built in Python, and why? (1) dictionary of lists (2) set of dictionaries (3) dictionary of sets (4) list of lists', '<b>(2)</b>: the elements of a set must be immutable (hashable) and a dictionary is mutable, so a set of dictionaries raises <code>TypeError: unhashable type: \'dict\'</code>. The others are fine: dictionary values and list elements can be of any type.'],
+  ['You read a number with <code>input()</code>. What happens if you use it directly in an arithmetic operation, and what should you do?', '<code>input()</code> always returns a <b>string</b>. <code>input() + 1</code> raises a TypeError, and <code>input() * 2</code> repeats the text ("5" * 2 = "55"). Convert it first with <code>int(...)</code> or <code>float(...)</code>; since the user may type something that is not a number, put the conversion inside <code>try</code> / <code>except ValueError</code>.'],
+  ['In a dictionary, can two keys have the same value? Can one key have two values?', 'Two keys with equal values: <b>yes</b> (<code>{"Anna": 30, "Luca": 30}</code>). One key with two values: <b>no</b>, keys are unique and assigning <code>d[k]</code> again replaces the old value. To keep several values for a key, use a list or a set as the value: <code>d.setdefault(k, []).append(v)</code>.'],
+  ['Can a list be a key of a dictionary? And a tuple? Can a set contain lists, tuples or other sets?', 'Dictionary keys and set elements must be immutable (hashable). A list: <b>no</b> (TypeError: unhashable type: \'list\'). A tuple: <b>yes</b>, if its elements are immutable too (<code>d[(2, 3)] = "B3"</code>). A set can contain numbers, strings and tuples, but not lists, dictionaries or sets (<code>frozenset</code> exists for that). A tuple, instead, can contain anything, even a set.'],
+  ['What is the difference between the formal parameters and the actual parameters (arguments) of a function?', 'Formal parameters are the names in the definition, <code>def area(base, height):</code>; they are local variables of the function. Actual parameters (arguments) are the values in the call, <code>area(3, 4.5)</code>: each formal parameter receives the corresponding argument (by position or by name, <code>area(height=2, base=5)</code>). Assigning a new value to a parameter does not change the caller\'s variable, but changing a mutable argument (e.g. <code>lst.append(x)</code>) does.'],
+  ['Why can comparing two floats with <code>==</code> give a wrong answer? Describe two correct ways to compare them.', 'Many decimal numbers have no exact binary representation, so results carry rounding errors: <code>0.1 + 0.2 == 0.3</code> is <code>False</code> (the sum is 0.30000000000000004). Compare with a tolerance: absolute, <code>abs(a - b) &lt; 1e-9</code>; or relative, <code>abs(a - b) &lt;= 1e-9 * max(abs(a), abs(b))</code>, better for very large or very small numbers (<code>math.isclose(a, b)</code> does this).'],
+  ['What is the difference between <b>raising</b> and <b>handling</b> an exception? When is an <code>except</code> clause executed?', 'Raising signals an error: Python does it by itself (<code>int("x")</code> raises ValueError) or the programmer does it with <code>raise ValueError("negative")</code>; execution stops and the exception goes back through the calls. Handling means catching it with <code>try</code> / <code>except</code> and reacting. The <code>except</code> block runs only if an exception of a matching type is raised inside the <code>try</code>: the rest of the <code>try</code> is skipped and the program continues after the <code>except</code>. Without errors, <code>except</code> is skipped.'],
+  ['How can a program check whether a string can be converted to an <code>int</code>?', 'The safe way is to try the conversion: <pre class="code">try:\n    n = int(s)\nexcept ValueError:\n    print("not an integer")</pre><code>s.isdigit()</code> works only for non-negative numbers without spaces: it is <code>False</code> for "-5" and " 7", which <code>int()</code> accepts.'],
+  ['What does <code>enumerate</code> do and what does it return? Give an example.', 'It goes through a sequence giving at each step the pair (index, element), so you do not need <code>range(len(...))</code>. <pre class="code">for i, name in enumerate(["Anna", "Luca"]):\n    print(i, name)</pre>prints <code>0 Anna</code> and <code>1 Luca</code>. It returns an enumerate object (an iterator of tuples); <code>enumerate(seq, 1)</code> starts counting from 1.'],
+  ['How does the slice operator <code>[start:stop:step]</code> work, and on which types can it be used?', 'It takes the elements from index <code>start</code> (included) to <code>stop</code> (excluded) with the given step; missing values mean beginning, end and 1; negative indices count from the end. With <code>s = "Politecnico"</code>: <code>s[0:4]</code> → "Poli", <code>s[-3:]</code> → "ico", <code>s[::-1]</code> reverses it. It works on sequences (strings, lists, tuples, ranges) and always creates a new object, so <code>lst[:]</code> is a copy. Not on sets or dictionaries (no positions).'],
+  ['What are the similarities and the differences between strings and lists in Python?', 'Both are sequences: indexing <code>x[i]</code>, slicing, <code>len</code>, <code>in</code>, <code>for</code> loops, <code>+</code> and <code>*</code>. A string contains only characters and is <b>immutable</b> (<code>s[0] = "X"</code> is an error; methods like <code>upper()</code> return new strings); a list contains values of any type and is <b>mutable</b> (append, remove, item assignment). <code>list("abc")</code> → <code>["a", "b", "c"]</code>; <code>"".join(lst)</code> goes back.'],
+  ['Why is this definition wrong, and how would you correct it? <code>s = {[2, 4], [2, 2], [1, 0]}</code>', 'The elements of a set must be immutable and lists are mutable: Python raises <code>TypeError: unhashable type: \'list\'</code>. Use tuples, <code>s = {(2, 4), (2, 2), (1, 0)}</code>; or, if order and duplicates matter, a list of lists <code>[[2, 4], [2, 2], [1, 0]]</code>.'],
+  ['What does <code>a</code> contain at the end, and why? <pre class="code">def f(i, lst):\n    lst[i], lst[i + 1] = lst[i + 1], lst[i]\n\na = [5, 8, 1, 3]\nf(1, a)\nf(0, a)</pre>', 'The parameter <code>lst</code> is an alias of <code>a</code> (the same list), so the swaps change <code>a</code> itself. <code>f(1, a)</code> swaps positions 1 and 2: <code>[5, 1, 8, 3]</code>; <code>f(0, a)</code> swaps positions 0 and 1: <b><code>[1, 5, 8, 3]</code></b>.'],
+  ['This code should remove all the zeros from the list, but it crashes. Why? Correct it. <pre class="code">v = [3, 0, 0, 5, 0]\nfor i in range(len(v)):\n    if v[i] == 0:\n        v.pop(i)</pre>', '<code>range(len(v))</code> is computed once (0…4), but each <code>pop</code> shortens the list and shifts the next elements left: a zero right after a removed one is skipped, and soon <code>i</code> is past the end: <code>IndexError: list index out of range</code>. Correct: build a new list, <code>v = [x for x in v if x != 0]</code>, or <code>while 0 in v: v.remove(0)</code>.'],
+  ['Describe in words the data structure <code>d = {"A": {2, 3, 5}, "K": {1, 2, 3}, "M": {2, 3, 6}}</code>. How do you get the numbers that appear under every key?', 'A dictionary whose keys are strings and whose values are sets of integers (e.g. for each person, the days they are free). The numbers present under every key are the intersection of the sets: <code>d["A"] &amp; d["K"] &amp; d["M"]</code>, or in general <code>set.intersection(*d.values())</code>; here <b>{2, 3}</b>.'],
+  ['Describe the variable <code>x = [(2, 3), (4, -1)]</code>. What is <code>x[1][0]</code>? Can you write <code>x[0][1] = 7</code>?', 'A list of two tuples of two integers each (e.g. points (x, y)). <code>x[1]</code> is the tuple <code>(4, -1)</code>, so <code>x[1][0]</code> is <b>4</b>. <code>x[0][1] = 7</code> raises a TypeError: tuples are immutable. You can replace a whole element instead, <code>x[0] = (2, 7)</code>, because the list is mutable.'],
+  ['You want to store students as (student ID, average) and print them by decreasing average. Which data structure would you use? Write the code that sorts and prints them.', 'A list of tuples (or a dictionary ID → average, used through <code>items()</code>): <pre class="code">students = [("s301", 27.5), ("s302", 24.0), ("s303", 29.1)]\nfor sid, avg in sorted(students, key=lambda s: s[1], reverse=True):\n    print(sid, avg)</pre><code>key</code> chooses what to compare (the second field) and <code>reverse=True</code> gives decreasing order; <code>sorted</code> returns a new list, <code>students.sort(...)</code> sorts in place.'],
+  ['If <code>numbers</code> is a list of integers, what is the difference between <code>numbers.sort()</code> and <code>sorted(numbers)</code>? What happens with <code>numbers = numbers.sort()</code>?', '<code>numbers.sort()</code> sorts the list in place (it changes it) and returns <code>None</code>. <code>sorted(numbers)</code> leaves the list unchanged and returns a new sorted list (it accepts any iterable: tuples, sets, strings). <code>numbers = numbers.sort()</code> sorts the list and then assigns <code>None</code> to <code>numbers</code>: the list is lost, a classic mistake.'],
+  ['A polynomial P(x) is stored in a dictionary (key = degree, value = coefficient), e.g. <code>p = {3: 2, 1: -4, 0: 7}</code> for 2x³ − 4x + 7. Write a function that computes P(x). Why is a dictionary a good choice?', '<pre class="code">def evaluate(p, x):\n    total = 0\n    for degree, coeff in p.items():\n        total += coeff * x ** degree\n    return total</pre><code>evaluate(p, 2)</code> → 16 − 8 + 7 = 15. Only the non-zero coefficients are stored (good for sparse polynomials such as x¹⁰⁰ + 1), and the coefficient of a degree is found directly with <code>p.get(k, 0)</code>.'],
+  ['Which relational operators (<code>== != &lt; &lt;= &gt; &gt;=</code>) can be used on strings, lists, sets and dictionaries, and what do they mean?', 'Strings and lists: all six; <code>&lt;</code> compares element by element (lexicographic order: <code>"apple" &lt; "banana"</code>, <code>[1, 5] &lt; [2]</code>; strings by character code, so <code>"Z" &lt; "a"</code>). Sets: all six, but <code>&lt;=</code> / <code>&lt;</code> mean subset / proper subset (<code>{1} &lt; {1, 2}</code>). Dictionaries: only <code>==</code> and <code>!=</code> (same key–value pairs); <code>d1 &lt; d2</code> raises a TypeError.'],
+  ['Write the code that creates a set containing two tuples of two numbers, adds a third tuple and prints all of them.', '<pre class="code">points = {(0, 0), (2, 3)}\npoints.add((1, 5))\nfor p in points:\n    print(p)</pre>Tuples can be set elements because they are immutable. The printing order is not guaranteed (sets have no order), and adding a tuple already present changes nothing.'],
+];
+// Banks by area: n = data representation, a = computer architecture, g = programming basics, p = Python.
+const CSB = {
+  n: [7, 17, 18].map(i => CSTH[i]).concat(CS_NUM),
+  a: [0, 1, 2].map(i => CSTH[i]).concat(CS_ARCH),
+  g: [3, 4, 5, 19].map(i => CSTH[i]),
+  p: [6, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(i => CSTH[i]).concat(CS_PY),
+};
+const fromBank = (k, pts) => { const [q, sol] = rnd.pick(CSB[k]); return { q, pts, sol }; };
+// As in the past exams and the midterm announcement: one question on data representation, one on computer
+// architecture, one on Python.
 function csTheory(L, n, pts) {
-  return rnd.shuffle([csNumQ(L, pts)].concat(rnd.shuffle(CSTH).slice(0, n - 1).map(([q, sol]) => ({ q, pts, sol }))));
+  const out = [rnd.int(1, 5) === 1 ? fromBank('n', pts) : csNumQ(L, pts),
+    rnd.int(1, 3) === 1 ? csArchNum(pts) : fromBank(rnd.int(1, 4) === 1 ? 'g' : 'a', pts),
+    fromBank('p', pts)];
+  while (out.length < n) out.push(fromBank('p', pts));
+  return out.slice(0, n);
 }
 function csTask(lv, not) {
   let pool = TASKS.filter(t => Math.abs(t.lv - lv) <= 1 && t !== not); if (!pool.length) pool = TASKS.filter(t => t !== not);
@@ -372,6 +513,21 @@ function csTask(lv, not) {
 function csProg(t, title, points, parts, note) {
   return { title, points, parts, intro: (note ? `<div class="small" style="margin-bottom:8px">${note}</div>` : '') + `<b>${esc(t.title)}.</b> ` + t.text + '<div class="small" style="margin-top:8px"><b>Example.</b> ' + t.example + '</div>',
     extraSol: '<b>Model solution</b> (one of many correct ones):<pre class="code">' + esc(t.code) + '</pre>' };
+}
+// Programming part in the style of the past exams: data files, numbered requirements, expected output (csexams.js).
+function csExamTask(L) {
+  const all = G.CS_EXAMS || []; if (!all.length) return null;
+  const d = Math.max(1, Math.min(...all.map(t => Math.abs(t.lv - L))));
+  return rnd.pick(all.filter(t => Math.abs(t.lv - L) <= d));
+}
+function csExamProg(t, parts) {
+  const pre = c => '<pre class="code">' + esc(c) + '</pre>';
+  return { title: 'Programming', points: 26, parts, files: t.files,
+    intro: '<div class="small" style="margin-bottom:8px">Write it on the computer and run it: <b>a program that does not run is not reviewed</b> (0 points for this whole part). Download the example files with the buttons below and put them next to your <code>.py</code> file.</div>' +
+      `<b>${esc(t.title)}.</b> ${t.text}<ol>${t.reqs.map(r => '<li>' + r + '</li>').join('')}</ol>` +
+      t.files.map(f => `<div class="small"><b>Example file <code>${esc(f.name)}</code></b></div>${pre(f.text.replace(/\n$/, ''))}`).join('') +
+      `<div class="small"><b>Expected output</b>${t.input ? ` (the user types <code>${esc(t.input)}</code>)` : ''}</div>${pre(t.out)}`,
+    extraSol: '<b>Model solution</b> (one of many correct ones; run on the example files it prints exactly the expected output):' + pre(t.code) };
 }
 // Midterm question 4 (announcement): complete a program with missing parts, correct errors, or write a short snippet.
 function csQ4(L) {
@@ -409,16 +565,21 @@ function writtenCS(L, mode) {
     return { title: 'Computer Sciences — midterm (practice)', max: 6, pass: 3,
       passText: 'VALID — can replace the theory part', failText: 'BELOW 3/6 — would not replace the theory part',
       exercises: [
-        { title: 'Questions 1–3 — theory', points: 6, intro: 'Same kind as the theory questions of the final exam. Answer in English, briefly and precisely: words make a difference (“are” is not “may be”).', parts: csTheory(L, 3, 2) },
+        { title: 'Questions 1–3 — theory', points: 6, intro: 'As announced: data representation, computer architecture, Python concepts (one question each, like the past exams). Answer in English, briefly and precisely: words make a difference (“are” is not “may be”).', parts: csTheory(L, 3, 2) },
         csQ4(L),
       ] };
   }
-  const t = csTask(L);
+  const t = csTask(L), real = csExamTask(L);
+  const progParts = [
+    { q: 'Input reading and data structures (files / input, lists, dictionaries).', pts: 7, sol: 'Data read correctly (header skipped, types converted, separators handled), appropriate structures chosen.' },
+    { q: 'Main algorithm (correct results in all cases).', pts: 11, sol: 'Correct logic for every requirement, including the edge cases (ties, empty groups, missing keys).' },
+    { q: 'Output in the requested format.', pts: 4, sol: 'Same lines, order and numeric formatting as the expected output.' },
+    { q: 'Code organisation: functions, meaningful names, no duplicated code.', pts: 4, sol: 'Reading and computing split into functions; the main program is short and readable.' }];
   return { title: 'Computer Sciences — exam (practice)', max: 32, pass: 18,
     gate: { ex: 0, min: 3, why: 'Theory below 3/6: at the real exam the programming part would not be corrected.' },
     exercises: [
-      { title: 'Theory — short questions', points: 6, intro: 'Answer in English, briefly and precisely: words make a difference (“are” is not “may be”). You need at least 3 of these 6 points, otherwise the programming part is not corrected.', parts: csTheory(L, 3, 2) },
-      csProg(t, 'Programming', 26, [
+      { title: 'Theory — short questions', points: 6, intro: 'One question on data representation, one on computer architecture, one on Python, like the past exams. Answer in English, briefly and precisely: words make a difference (“are” is not “may be”). You need at least 3 of these 6 points, otherwise the programming part is not corrected.', parts: csTheory(L, 3, 2) },
+      real ? csExamProg(real, progParts) : csProg(t, 'Programming', 26, [
         { q: 'Input reading and data structures (files / input, lists, dictionaries).', pts: 7, sol: 'Data read correctly (types converted, empty or malformed lines handled), appropriate structures chosen.' },
         { q: 'Main algorithm (correct results in all cases).', pts: 11, sol: 'Correct logic for the core task, including edge cases (empty input, ties, missing keys).' },
         { q: 'Output in the requested format.', pts: 4, sol: 'Messages and numeric formatting exactly as requested.' },

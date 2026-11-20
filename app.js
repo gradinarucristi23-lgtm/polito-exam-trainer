@@ -512,6 +512,7 @@ function writtenView(main, W, fromHistory) {
     </div>
     <div class="card">${ex.exercises.map((e, ei) => `<div class="ex"><h3>${esc(e.title)} <span class="badge">${e.points} pts</span></h3>
       ${e.intro ? `<div class="pq">${rich(e.intro)}</div>` : ''}
+      ${Array.isArray(e.files) ? `<div class="row noprint" style="gap:6px;margin:0 0 10px">${e.files.map((f, fi) => `<button class="btn small" data-dlf="${ei}.${fi}">Download ${esc(f.name)}</button>`).join('')}</div>` : ''}
       ${e.parts.map((p, pi) => `<div class="part"><div class="pq"><b>(${LETTERS[pi]})</b> ${rich(p.q)} <span class="small muted">[${p.pts} pt${p.pts === 1 ? '' : 's'}]</span></div>
         ${done ? `<div class="sol">${rich(p.sol)}</div><div class="grade"><label>Your points:</label><input type="number" min="0" max="${p.pts}" step="0.5" data-g="${partKey(ei, pi)}" value="${W.grades[partKey(ei, pi)] ?? ''}"> <span class="muted">/ ${p.pts}</span>
           <button class="linkbtn small" data-full="${partKey(ei, pi)}" data-max="${p.pts}">full</button> <button class="linkbtn small" data-zero="${partKey(ei, pi)}">zero</button></div>` : ''}
@@ -526,6 +527,11 @@ function writtenView(main, W, fromHistory) {
         `<button class="btn primary" id="claude">Copy for Claude (grading prompt)</button><button class="btn" id="back">${fromHistory ? '← Back to history' : 'New written exam'}</button>`}
     </div>`;
   drawThumbs(W);
+  $$('[data-dlf]', main).forEach(b => b.onclick = () => {
+    const [a, c] = b.dataset.dlf.split('.').map(Number), f = ex.exercises[a].files[c];
+    const url = URL.createObjectURL(new Blob([String(f.text)], { type: 'text/plain' })), l = document.createElement('a');
+    l.href = url; l.download = String(f.name); document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  });
   const drop = $('#drop'), fi = $('#file');
   drop.onclick = () => fi.click();
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
